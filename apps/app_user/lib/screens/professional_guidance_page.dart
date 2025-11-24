@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class ProfessionalGuidancePage extends StatefulWidget {
   const ProfessionalGuidancePage({super.key});
@@ -302,9 +303,7 @@ class _ArticleCard extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Article viewer coming soon!')),
-                    );
+                    showSuccessSnackBar(context, 'Article viewer coming soon!');
                   },
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF8B5FBF),
@@ -479,9 +478,7 @@ class _PodcastCard extends StatelessWidget {
               color: const Color(0xFF8B5FBF),
               iconSize: 36,
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Podcast player coming soon!')),
-                );
+                showSuccessSnackBar(context, 'Podcast player coming soon!');
               },
             ),
           ],

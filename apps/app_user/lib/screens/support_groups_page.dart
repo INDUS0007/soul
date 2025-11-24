@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class SupportGroupsPage extends StatefulWidget {
   const SupportGroupsPage({super.key});
@@ -79,22 +80,19 @@ class _SupportGroupsPageState extends State<SupportGroupsPage> {
             if (item.slug == updated.slug) updated else item,
         ];
       });
-      _showSnackBar(
+      showSuccessSnackBar(
+        context,
         updated.isJoined
             ? 'Joined ${updated.name}'
             : 'Left ${updated.name}',
       );
     } on ApiClientException catch (error) {
       if (!mounted) return;
-      _showSnackBar(error.message);
+      showErrorSnackBar(context, error.message);
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Unable to update membership. Please try again. ($error)');
+      showErrorSnackBar(context, 'Unable to update membership. Please try again. ($error)');
     }
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override

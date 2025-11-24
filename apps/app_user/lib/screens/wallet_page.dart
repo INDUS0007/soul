@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
@@ -18,11 +19,36 @@ class _WalletPageState extends State<WalletPage> {
   String? _error;
   int _walletAmount = 0;
   int _selectedAmount = 100;
+  bool _isLoading = false;  // Track if a load is in progress
+  bool _hasLoadedOnce = false;  // Track if we've loaded at least once
 
   @override
   void initState() {
     super.initState();
-    _loadWallet();
+    // Always load fresh wallet data when page opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadWallet();
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh wallet when page becomes visible (e.g., when navigating back to it)
+    // This ensures balance is up-to-date after transactions
+    // Only refresh if we've already loaded once (to avoid double-loading on first mount)
+    if (_hasLoadedOnce) {
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent && !_isLoading) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_isLoading) {
+            _loadWallet();
+          }
+        });
+      }
+    }
   }
 
   @override
@@ -30,8 +56,12 @@ class _WalletPageState extends State<WalletPage> {
     _customCtrl.dispose();
     super.dispose();
   }
-
+  
   Future<void> _loadWallet() async {
+    // Prevent multiple simultaneous loads
+    if (_isLoading) return;
+    
+    _isLoading = true;
     setState(() {
       _loading = true;
       _error = null;
@@ -39,22 +69,35 @@ class _WalletPageState extends State<WalletPage> {
 
     try {
       final wallet = await _api.getWallet();
-      if (!mounted) return;
+      if (!mounted) {
+        _isLoading = false;
+        return;
+      }
       setState(() {
         _walletAmount = wallet.amount;
         _loading = false;
+        _isLoading = false;
+        _hasLoadedOnce = true;
       });
     } on ApiClientException catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        _isLoading = false;
+        return;
+      }
       setState(() {
         _error = error.message;
         _loading = false;
+        _isLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        _isLoading = false;
+        return;
+      }
       setState(() {
         _error = 'Unable to load wallet. Please try again. ($error)';
         _loading = false;
+        _isLoading = false;
       });
     }
   }
@@ -73,22 +116,16 @@ class _WalletPageState extends State<WalletPage> {
         _walletAmount = updatedAmount;
         _recharging = false;
       });
-      _showSnackBar('Wallet recharged successfully!');
+      showSuccessSnackBar(context, 'Wallet recharged successfully!');
     } on ApiClientException catch (error) {
       if (!mounted) return;
       setState(() => _recharging = false);
-      _showSnackBar(error.message);
+      showErrorSnackBar(context, error.message);
     } catch (error) {
       if (!mounted) return;
       setState(() => _recharging = false);
-      _showSnackBar('Recharge failed. Please try again. ($error)');
+      showErrorSnackBar(context, 'Recharge failed. Please try again. ($error)');
     }
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
   }
 
   @override
@@ -108,8 +145,11 @@ class _WalletPageState extends State<WalletPage> {
           title: const Text('Wallet'),
           backgroundColor: const Color(0xFF8B5FBF),
         ),
-        body: SafeArea(
-          child: _buildBody(),
+        body: RefreshIndicator(
+          onRefresh: _loadWallet,
+          child: SafeArea(
+            child: _buildBody(),
+          ),
         ),
       ),
     );
@@ -121,29 +161,37 @@ class _WalletPageState extends State<WalletPage> {
     }
 
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16),
+      return SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _loadWallet,
+                    child: const Text('Retry'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _loadWallet,
-                child: const Text('Retry'),
-              ),
-            ],
+            ),
           ),
         ),
       );
     }
 
-    return Padding(
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,12 +204,23 @@ class _WalletPageState extends State<WalletPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Current Balance',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black54,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Current Balance',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        color: const Color(0xFF8B5FBF),
+                        onPressed: _loadWallet,
+                        tooltip: 'Refresh balance',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -170,6 +229,14 @@ class _WalletPageState extends State<WalletPage> {
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF8B5FBF),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Chat: ₹1 per minute',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
                     ),
                   ),
                 ],
@@ -187,7 +254,7 @@ class _WalletPageState extends State<WalletPage> {
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
-            children: [100, 200, 300, 500].map((amount) {
+            children: [100, 500, 1000, 2000].map((amount) {
               final selected = _selectedAmount == amount;
               return ChoiceChip(
                 label: Text('₹$amount'),
@@ -244,6 +311,7 @@ class _WalletPageState extends State<WalletPage> {
           ),
           const SizedBox(height: 12),
         ],
+      ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:common/widgets/widgets.dart';
 import '../models/session.dart';
 import 'dart:async';
 
@@ -164,12 +165,7 @@ class _AudioCallScreenState extends State<AudioCallScreen>
     setState(() {
       _isMuted = !_isMuted;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isMuted ? 'Microphone muted' : 'Microphone unmuted'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    showSuccessSnackBar(context, _isMuted ? 'Microphone muted' : 'Microphone unmuted');
     // TODO: Mute/unmute audio stream
   }
 
@@ -177,12 +173,7 @@ class _AudioCallScreenState extends State<AudioCallScreen>
     setState(() {
       _isSpeakerOn = !_isSpeakerOn;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_isSpeakerOn ? 'Speaker on' : 'Speaker off'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    showSuccessSnackBar(context, _isSpeakerOn ? 'Speaker on' : 'Speaker off');
     // TODO: Toggle speaker/earpiece
   }
 
@@ -838,13 +829,7 @@ class _AudioCallScreenState extends State<AudioCallScreen>
           _selectedRisk = level;
         });
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Risk level set to: $label'),
-            backgroundColor: color,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        showSuccessSnackBar(context, 'Risk level set to: $label');
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -889,13 +874,7 @@ class _AudioCallScreenState extends State<AudioCallScreen>
           _manualFlag = flag;
         });
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Flag set to: $label'),
-            backgroundColor: color,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        showSuccessSnackBar(context, 'Flag set to: $label');
         // Show summary again after setting flag
         _showSessionSummary();
       },

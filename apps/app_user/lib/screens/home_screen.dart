@@ -1,10 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 // Removed flutter_native_timezone plugin - using built-in Dart timezone support instead
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:uuid/uuid.dart';
+import '../main.dart';
 import 'advanced_care_support_page.dart';
 import 'affirmations_page.dart';
 import 'assessment_page.dart';
@@ -172,23 +178,24 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final wallet = await _api.getWallet();
       if (!mounted) return;
+      final oldAmount = _walletAmount;
       setState(() {
         _walletAmount = wallet.amount;
         _walletMinimums = wallet.minimumBalance;
       });
-    } on ApiClientException catch (error) {
-      if (kDebugMode) {
-        debugPrint('Wallet load failed: ${error.message}');
+      // Log balance change for debugging
+      if (oldAmount != _walletAmount) {
+        appLogger.info('Wallet balance updated: ₹$oldAmount -> ₹${_walletAmount}');
       }
+    } on ApiClientException catch (error) {
+      appLogger.error('Wallet load failed: ${error.message}');
       if (mounted) {
         setState(() {
           _walletAmount = 0;
         });
       }
     } catch (error) {
-      if (kDebugMode) {
-        debugPrint('Failed to load wallet: $error');
-      }
+      appLogger.error('Failed to load wallet', error);
     } finally {
       if (mounted) {
         setState(() {
@@ -214,9 +221,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final sign = totalMinutes >= 0 ? '+' : '-';
       detectedTz = 'UTC$sign${hours.abs().toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
     } catch (error) {
-      if (kDebugMode) {
-        debugPrint('Unable to read device timezone: $error');
-      }
+      appLogger.debug('Unable to read device timezone', error);
       // Fallback to UTC if detection fails
       detectedTz = 'UTC+00:00';
     }
@@ -281,25 +286,17 @@ class _DashboardPageState extends State<DashboardPage> {
       });
 
       if (feedbackEmoji != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Mood updated: $feedbackEmoji')),
-        );
+        showSuccessSnackBar(context, 'Mood updated: $feedbackEmoji');
       }
     } on ApiClientException catch (error) {
       if (!mounted) return;
       setState(() => _currentMoodValue = _lastCommittedMood);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      showErrorSnackBar(context, error.message);
     } catch (error) {
       if (!mounted) return;
       setState(() => _currentMoodValue = _lastCommittedMood);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to update mood. Please try again later.')),
-      );
-      if (kDebugMode) {
-        debugPrint('Mood update failed: $error');
-      }
+      showErrorSnackBar(context, 'Unable to update mood. Please try again later.');
+      appLogger.error('Mood update failed', error);
     } finally {
       if (mounted) {
         setState(() => _moodUpdating = false);
@@ -379,15 +376,11 @@ class _DashboardPageState extends State<DashboardPage> {
           'email': updated['email'],
         });
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Profile updated')),
-          );
+          showSuccessSnackBar(context, 'Profile updated');
         }
       } catch (error) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update profile: $error')),
-        );
+        showErrorSnackBar(context, 'Failed to update profile: $error');
       }
     } else {
       setState(() {}); // trigger UI refresh to reflect any controller edits
@@ -709,19 +702,19 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _openWallet() async {
-    final updatedAmount = await Navigator.push<int>(
+    // Always refresh wallet before opening wallet page to ensure latest balance
+    await _loadWalletBalance();
+    
+    await Navigator.push<int>(
       context,
       MaterialPageRoute(builder: (_) => const WalletPage()),
     );
     if (!mounted) return;
-    if (updatedAmount != null) {
-      setState(() => _walletAmount = updatedAmount);
-    } else {
-      await _loadWalletBalance();
-    }
+    // Always refresh wallet after returning from wallet page
+    await _loadWalletBalance();
   }
 
-  void _openChatbot() {
+  void _openChatbot() async {
     final minChatBalance = _walletMinimums['chat'] ?? 0;
     if (_walletAmount < minChatBalance) {
       showDialog<void>(
@@ -747,10 +740,30 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    Navigator.push(
+    // Navigate to chat screen
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const ChatWithCounsellorPage()),
     );
+    
+    // Always refresh wallet balance when returning from chat
+    // Add a small delay to ensure backend billing has completed
+    // This ensures the balance is up-to-date after chat session ends
+    if (mounted) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _loadWalletBalance();
+      
+      // Show a notification that balance was updated
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Wallet balance updated'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Color(0xFF8B5FBF),
+          ),
+        );
+      }
+    }
   }
 
   void _navigateToDashboard() {
@@ -942,7 +955,7 @@ class _DashboardPageState extends State<DashboardPage> {
       [Color(0xFFE2F5EA), Color(0xFFBFE5CE)],
       [Color(0xFFFFECB8), Color(0xFFFFE08C)],
     ];
-    const emojis = ['😢', '😞', '😐', '🙂', '😄'];
+    const emojis = ['😭', '😞', '😐', '🙂', '😍']; // Very Bad, Bad, Neutral, Good, Excellent
 
     return Card(
       color: Colors.white,
@@ -973,6 +986,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 final idx = index + 1;
                 final isSelected = _currentMoodValue.round() == idx;
                 final colors = gradients[index];
+                final labels = ['Very Bad', 'Bad', 'Neutral', 'Good', 'Excellent'];
                 return GestureDetector(
                   onTap: _moodUpdating ? null : () => _handleMoodTap(idx.toDouble(), emojis[index]),
                   child: Column(
@@ -1005,6 +1019,15 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                       ),
                       const SizedBox(height: 6),
+                      Text(
+                        labels[index],
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          color: isSelected ? _Palette.primary : _Palette.subtext,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       AnimatedOpacity(
                         opacity: isSelected ? 1 : 0,
                         duration: const Duration(milliseconds: 200),
@@ -1103,15 +1126,15 @@ class _DashboardPageState extends State<DashboardPage> {
   String _moodEmoji(double value) {
     switch (value.round()) {
       case 1:
-        return '😢';
+        return '😭'; // Very Bad
       case 2:
-        return '😞';
+        return '😞'; // Bad
       case 3:
-        return '😐';
+        return '😐'; // Neutral
       case 4:
-        return '🙂';
+        return '🙂'; // Good
       case 5:
-        return '😄';
+        return '😍'; // Excellent
       default:
         return '🙂';
     }
@@ -1839,6 +1862,7 @@ class ChatWithCounsellorPage extends StatefulWidget {
 class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
     with SingleTickerProviderStateMixin {
   final ApiClient _api = ApiClient();
+  final _uuid = const Uuid();
   String _currentFlow = 'questionnaire';
   int _currentQuestionIndex = 0;
   bool _checkingExistingChat = true;
@@ -1884,7 +1908,9 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
 
   final List<ChatMessage> _chatMessages = [];
   final TextEditingController _chatInputController = TextEditingController();
+  final FocusNode _chatInputFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  bool _sendingMessage = false;
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -1912,9 +1938,9 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
     try {
       final chatList = await _api.getChatList();
       
-      // Find active or queued chat (not completed or cancelled)
+      // Find active, inactive, or queued chat (not completed or cancelled)
       final activeChat = chatList.firstWhere(
-        (chat) => chat['status'] == 'active' || chat['status'] == 'queued',
+        (chat) => chat['status'] == 'active' || chat['status'] == 'inactive' || chat['status'] == 'queued',
         orElse: () => <String, dynamic>{},
       );
 
@@ -1926,19 +1952,19 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
           _currentFlow = 'chat';
           _showGreeting = false;
           
-          // Add initial message if exists
-          if (activeChat['initial_message'] != null && 
-              activeChat['initial_message'].toString().isNotEmpty) {
-            _chatMessages.add(
-              ChatMessage(
-                text: activeChat['initial_message'].toString(),
-                isUser: true,
-              ),
-            );
+          // Load existing messages
+          _loadChatMessages();
+          
+          // Connect WebSocket if chat is active (only if not already failed)
+          // Allow WebSocket connection for inactive chats too (will be reactivated when user sends message)
+          if ((activeChat['status'] == 'active' || activeChat['status'] == 'inactive') && !_webSocketConnectionFailed) {
+            _connectWebSocket();
           }
           
-          // Add welcome message from counselor if chat is active
-          if (activeChat['status'] == 'active') {
+          _startMessagePolling(); // Keep polling as fallback
+          
+          // Add welcome message from counselor if chat is active and no messages yet
+          if (activeChat['status'] == 'active' && _chatMessages.isEmpty) {
             Future.delayed(const Duration(milliseconds: 500), () {
               if (mounted) {
                 _addCounsellorMessage(
@@ -1946,7 +1972,16 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
                 );
               }
             });
-          } else {
+          } else if (activeChat['status'] == 'inactive') {
+            // Chat is inactive, show message that user can continue
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                _addCounsellorMessage(
+                  "This chat was paused due to inactivity. Send a message to continue the conversation.",
+                );
+              }
+            });
+          } else if (activeChat['status'] == 'queued') {
             // Chat is queued, show waiting message
             Future.delayed(const Duration(milliseconds: 500), () {
               if (mounted) {
@@ -1972,10 +2007,35 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
     }
   }
 
+  Timer? _messagePollTimer;
+  WebSocketChannel? _webSocketChannel;
+  StreamSubscription? _webSocketSubscription;
+  bool _isConnectingWebSocket = false;
+  bool _webSocketConnectionFailed = false;
+
+  void _closeWebSocket() {
+    try {
+      _webSocketSubscription?.cancel();
+      _webSocketSubscription = null;
+    } catch (e) {
+      // Ignore errors during cleanup
+    }
+    try {
+      _webSocketChannel?.sink.close();
+      _webSocketChannel = null;
+    } catch (e) {
+      // Ignore errors during cleanup
+    }
+  }
+
   @override
   void dispose() {
+    _closeWebSocket();
+    _messagePollTimer?.cancel();
+    _messagePollTimer = null;
     _othersController.dispose();
     _chatInputController.dispose();
+    _chatInputFocusNode.dispose();
     _scrollController.dispose();
     _animationController.dispose();
     super.dispose();
@@ -2011,11 +2071,17 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
   }
 
   Future<void> _startChat() async {
-    // Check if there's already an active chat
+    // Check if there's already an active, inactive, or queued chat
     if (_activeChat != null && 
-        (_activeChat!['status'] == 'active' || _activeChat!['status'] == 'queued')) {
+        (_activeChat!['status'] == 'active' || _activeChat!['status'] == 'inactive' || _activeChat!['status'] == 'queued')) {
       // Go directly to chat if already exists
       setState(() => _currentFlow = 'chat');
+      _loadChatMessages();
+      // Connect WebSocket if chat is active or inactive (will be reactivated when user sends message)
+      if ((_activeChat!['status'] == 'active' || _activeChat!['status'] == 'inactive') && !_webSocketConnectionFailed) {
+        _connectWebSocket(); // Connect WebSocket if chat is active or inactive
+      }
+      _startMessagePolling(); // Keep polling as fallback
       return;
     }
 
@@ -2030,7 +2096,23 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
         setState(() {
           _activeChat = chatData;
           _currentFlow = 'chat';
+          _chatMessages.clear();
         });
+        
+        // Add initial message to UI if provided
+        if (initialMessage.isNotEmpty) {
+          _chatMessages.add(ChatMessage(text: initialMessage, isUser: true));
+        }
+        
+        // Load existing messages if chat is already active or inactive
+        if (chatData['status'] == 'active' || chatData['status'] == 'inactive') {
+          _loadChatMessages();
+          if (!_webSocketConnectionFailed) {
+            _connectWebSocket(); // Connect WebSocket for real-time messaging
+          }
+          _startMessagePolling(); // Keep polling as fallback
+        } else {
+          // Chat is queued
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
             _addCounsellorMessage(
@@ -2038,16 +2120,396 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
             );
           }
         });
+          // Start polling to check when chat becomes active
+          _startMessagePolling();
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to start chat: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showErrorSnackBar(context, 'Failed to start chat: ${e.toString()}');
       }
+    }
+  }
+
+  Future<void> _loadChatMessages() async {
+    if (_activeChat == null) return;
+    final chatId = _activeChat!['id'];
+    if (chatId == null) return;
+
+    try {
+      print('[User Chat] Loading messages from database for chat $chatId');
+      final messages = await _api.getChatMessages(chatId as int);
+      print('[User Chat] Received ${messages.length} messages from API');
+      
+      if (mounted) {
+        // FIXED: Deduplicate within the API response itself using message_id
+        // This prevents filtering out valid messages that happen to have the same text
+        final seenMessageIds = <int>{};
+        final seenClientMessageIds = <String>{};
+        final deduplicatedMessages = <Map<String, dynamic>>[];
+        
+        for (var msg in messages) {
+          final msgId = msg['id'] != null ? int.tryParse(msg['id'].toString()) : null;
+          final clientMsgId = msg['client_message_id']?.toString();
+          
+          // Use message_id for deduplication (most reliable)
+          if (msgId != null) {
+            if (seenMessageIds.contains(msgId)) {
+              print('[User Chat] Skipping duplicate by message_id: $msgId');
+              continue;
+            }
+            seenMessageIds.add(msgId);
+          } else if (clientMsgId != null) {
+            // Fallback to client_message_id
+            if (seenClientMessageIds.contains(clientMsgId)) {
+              print('[User Chat] Skipping duplicate by client_message_id: $clientMsgId');
+              continue;
+            }
+            seenClientMessageIds.add(clientMsgId);
+          }
+          
+          deduplicatedMessages.add(msg);
+        }
+        
+        print('[User Chat] Deduplicated: ${messages.length} -> ${deduplicatedMessages.length} messages');
+        
+        // Now build ChatMessage objects from deduplicated API response
+        final newMessages = <ChatMessage>[];
+        for (var msg in deduplicatedMessages) {
+          final text = msg['text']?.toString() ?? '';
+          final isUser = msg['is_user'] == true;
+          final timestampStr = msg['created_at']?.toString() ?? '';
+          final timestamp = timestampStr.isNotEmpty 
+              ? DateTime.tryParse(timestampStr) ?? DateTime.now()
+              : DateTime.now();
+          
+          newMessages.add(ChatMessage(
+            text: text,
+            isUser: isUser,
+            timestamp: timestamp,
+          ));
+        }
+        
+        print('[User Chat] Adding ${newMessages.length} messages from API');
+        
+        // FIXED: Replace all messages from API, not just add new ones
+        // This ensures we show all messages from the database
+        setState(() {
+          _chatMessages.clear();
+          _chatMessages.addAll(newMessages);
+          _chatMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        });
+        
+        print('[User Chat] Total messages after load: ${_chatMessages.length}');
+        _scrollToBottom();
+      }
+    } catch (e) {
+      print('[User Chat] Error loading messages: $e');
+      // Silently fail - messages will be loaded via polling
+    }
+  }
+
+  void _startMessagePolling() {
+    // Keep polling as fallback, but prefer WebSocket
+    _messagePollTimer?.cancel();
+    _messagePollTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted && _activeChat != null) {
+        final chatId = _activeChat!['id'];
+        if (chatId != null) {
+          // Only poll if WebSocket is not connected
+          if (_webSocketChannel == null) {
+            _checkForNewMessages();
+          }
+        } else {
+          timer.cancel();
+        }
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  void _connectWebSocket() {
+    // Prevent multiple connection attempts
+    if (_isConnectingWebSocket || _webSocketConnectionFailed) return;
+    
+    if (_activeChat == null) return;
+    final chatId = _activeChat!['id'];
+    if (chatId == null) return;
+    
+    // Connect if chat is active or inactive (will be reactivated when user sends message)
+    if (_activeChat!['status'] != 'active' && _activeChat!['status'] != 'inactive') return;
+    
+    // Don't connect if we're not authenticated (will throw error)
+    // The API client will throw an error if not authenticated, which we'll catch
+
+    _isConnectingWebSocket = true;
+
+    // Close existing connection if any (safely)
+    _closeWebSocket();
+
+    // Connect to WebSocket (async, so we need to handle it properly)
+    _api.connectChatWebSocket(chatId as int).then((channel) {
+        if (!mounted) {
+          channel.sink.close();
+          _isConnectingWebSocket = false;
+          return;
+        }
+        
+        _webSocketChannel = channel;
+        _isConnectingWebSocket = false;
+        _webSocketConnectionFailed = false; // Reset failure flag on success
+
+        // Listen for incoming messages
+        _webSocketSubscription = channel.stream.listen(
+          (data) {
+          try {
+            final messageData = jsonDecode(data);
+            print('[User Chat] Received WebSocket message: ${messageData.toString()}');
+            
+            // CRITICAL: Handle ACK messages first (ignore them - they're just confirmations)
+            // ACK messages should never be processed as chat messages
+            if (messageData['type'] == 'ack') {
+              print('[User Chat] Received ACK (type=ack), ignoring completely');
+              return;
+            }
+            
+            // Handle errors
+            if (messageData['error'] != null) {
+              final errorMsg = messageData['error'].toString();
+              if (mounted) {
+                // Don't show error for messages we already sent (optimistic updates)
+                if (!errorMsg.contains('Failed to process message') || 
+                    !_chatMessages.any((m) => m.text == _chatInputController.text && m.isUser)) {
+                  showErrorSnackBar(context, errorMsg);
+                }
+              }
+              return;
+            }
+
+            // STRICT TYPE CHECK: Only process chat messages with type "message" or "chat_message"
+            // Backend sends: type "message" via chat_message handler, type "chat_message" via group broadcast
+            final messageType = messageData['type']?.toString() ?? '';
+            
+            // CRITICAL: Explicitly check for non-chat types and skip them
+            if (messageType == 'ack') {
+              print('[User Chat] Ignoring ACK message (already handled above)');
+              return;
+            }
+            
+            if (messageType == 'chat_status_update') {
+              print('[User Chat] Ignoring chat_status_update message');
+              return;
+            }
+            
+            // Only process messages with type "message" or "chat_message"
+            // Also allow messages without type for backward compatibility
+            if (messageType.isNotEmpty && messageType != 'message' && messageType != 'chat_message') {
+              print('[User Chat] Ignoring unknown message type: "$messageType" (expected: message, chat_message, or empty)');
+              print('[User Chat] Full message data: $messageData');
+              return;
+            }
+            
+            print('[User Chat] Processing message with type: "$messageType" (valid chat message type)');
+
+            final messageText = messageData['message']?.toString() ?? '';
+            
+            // Skip if message is empty
+            if (messageText.isEmpty) {
+              print('[User Chat] Empty message received, skipping');
+              return;
+            }
+
+            final isUser = messageData['is_user'] == true;
+              final timestampStr = messageData['timestamp']?.toString() ?? '';
+              final timestamp = timestampStr.isNotEmpty 
+                  ? DateTime.tryParse(timestampStr) ?? DateTime.now()
+                  : DateTime.now();
+            final messageId = messageData['message_id']?.toString();
+
+            if (messageText.isNotEmpty && mounted) {
+              // IMPROVED DEDUPLICATION: Less aggressive, prioritize message display
+              // Only filter out exact duplicates (same text + same sender + very close timestamp)
+              bool alreadyExists = false;
+              
+              // Check for duplicates - use stricter time window (2 seconds) to allow same text from different times
+              alreadyExists = _chatMessages.any((m) {
+                if (m.text == messageText && m.isUser == isUser) {
+                  final timeDiff = (m.timestamp.difference(timestamp).abs().inSeconds);
+                  // Only consider it duplicate if within 2 seconds (very close timestamps = same message)
+                  // This allows same text at different times (e.g., user says "hello" twice)
+                  if (timeDiff < 2) {
+                    print('[User Chat] Duplicate detected: same text "$messageText" from same sender within ${timeDiff}s');
+                    return true;
+                  }
+                }
+                return false;
+              });
+              
+              if (!alreadyExists) {
+                print('[User Chat] ✓ Adding NEW message: "$messageText" | isUser: $isUser | messageId: $messageId | timestamp: $timestamp');
+                print('[User Chat] Current message count: ${_chatMessages.length}');
+                setState(() {
+                  _chatMessages.add(ChatMessage(
+                    text: messageText,
+                    isUser: isUser,
+                    timestamp: timestamp,
+                  ));
+                  // Sort messages by timestamp to maintain chronological order
+                  _chatMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+                });
+                print('[User Chat] Message added. New count: ${_chatMessages.length}');
+                _scrollToBottom();
+              } else {
+                print('[User Chat] ✗ DUPLICATE - Skipping: "$messageText" | isUser: $isUser | messageId: $messageId');
+              }
+            } else {
+              print('[User Chat] ✗ SKIPPING - messageText empty or not mounted: messageText="$messageText", mounted=$mounted');
+            }
+          } catch (e) {
+            print('[User Chat] Error parsing WebSocket message: $e');
+            print('[User Chat] Raw data: $data');
+          }
+        },
+        onError: (error) {
+          // WebSocket error - fallback to polling
+          if (mounted) {
+            _isConnectingWebSocket = false;
+            _webSocketConnectionFailed = true;
+            _startMessagePolling();
+          }
+        },
+        onDone: () {
+          // WebSocket closed - only reconnect if chat is still active or inactive
+          if (mounted && _activeChat != null && (_activeChat!['status'] == 'active' || _activeChat!['status'] == 'inactive')) {
+            _isConnectingWebSocket = false;
+            // Don't auto-reconnect if connection failed before
+            if (!_webSocketConnectionFailed) {
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted && _activeChat != null && (_activeChat!['status'] == 'active' || _activeChat!['status'] == 'inactive')) {
+                  _connectWebSocket();
+                }
+              });
+            } else {
+              // Use polling as fallback
+              _startMessagePolling();
+            }
+          }
+        },
+          cancelOnError: false,
+        );
+      }).catchError((error) {
+        // If WebSocket fails, silently fallback to polling
+        // Don't log errors as they're expected if WebSocket isn't available
+        if (mounted) {
+          _isConnectingWebSocket = false;
+          _webSocketConnectionFailed = true;
+          _startMessagePolling();
+        }
+      }, test: (error) {
+        // Catch all errors silently
+        return true;
+      });
+  }
+
+  Future<void> _checkForNewMessages() async {
+    if (_activeChat == null) return;
+    final chatId = _activeChat!['id'];
+    if (chatId == null) return;
+
+    try {
+      // Also check if chat status changed to active or inactive
+      final chatList = await _api.getChatList();
+      final currentChat = chatList.firstWhere(
+        (chat) => chat['id'] == chatId,
+        orElse: () => <String, dynamic>{},
+      );
+      
+      bool statusChanged = false;
+      if (currentChat.isNotEmpty && (currentChat['status'] == 'active' || currentChat['status'] == 'inactive')) {
+        // Chat became active or inactive, update status and connect WebSocket
+        if (_activeChat!['status'] != 'active' && _activeChat!['status'] != 'inactive') {
+          statusChanged = true;
+          if (mounted) {
+            setState(() {
+              _activeChat = currentChat;
+              _webSocketConnectionFailed = false; // Reset failure flag when chat becomes active/inactive
+            });
+            // Load all messages when chat becomes active/inactive
+            _loadChatMessages();
+            // Connect WebSocket for real-time messaging (only if not already failed)
+            if (!_webSocketConnectionFailed) {
+              _connectWebSocket();
+            }
+          }
+        }
+        
+        // Also check if chat became inactive (from active)
+        if (currentChat['status'] == 'inactive' && _activeChat!['status'] == 'active') {
+          statusChanged = true;
+          if (mounted) {
+            setState(() {
+              _activeChat = currentChat;
+            });
+            // Show message that chat is inactive
+            _addCounsellorMessage(
+              "This chat was paused due to inactivity. Send a message to continue the conversation.",
+            );
+          }
+        }
+        
+        // Check if chat became active (from inactive)
+        if (currentChat['status'] == 'active' && _activeChat!['status'] == 'inactive') {
+          statusChanged = true;
+          if (mounted) {
+            setState(() {
+              _activeChat = currentChat;
+            });
+            // Chat reactivated, user can continue
+          }
+        }
+      }
+      
+      // Only fetch messages if status didn't change (to avoid duplicate load)
+      if (!statusChanged) {
+        final messages = await _api.getChatMessages(chatId as int);
+        if (mounted) {
+          // Use Set for efficient deduplication
+          final existingMessages = {
+            for (var msg in _chatMessages) '${msg.text}_${msg.isUser}'
+          };
+          
+          final newMessages = <ChatMessage>[];
+          for (var msg in messages) {
+            final msgText = msg['text']?.toString() ?? '';
+            final isUser = msg['is_user'] == true;
+            final timestampStr = msg['created_at']?.toString() ?? '';
+            final timestamp = timestampStr.isNotEmpty 
+                ? DateTime.tryParse(timestampStr) ?? DateTime.now()
+                : DateTime.now();
+            final key = '${msgText}_$isUser';
+            
+            if (!existingMessages.contains(key)) {
+              newMessages.add(ChatMessage(
+                text: msgText,
+                isUser: isUser,
+                timestamp: timestamp,
+              ));
+            }
+          }
+          
+          if (newMessages.isNotEmpty) {
+            setState(() {
+              _chatMessages.addAll(newMessages);
+              // Sort messages by timestamp to maintain chronological order
+              _chatMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            });
+            _scrollToBottom();
+          }
+        }
+      }
+    } catch (e) {
+      // Silently fail - polling will continue
     }
   }
 
@@ -2075,12 +2537,7 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Call initiated (demo mode)'),
-                  backgroundColor: _Palette.primary,
-                ),
-              );
+              showSuccessSnackBar(context, 'Call initiated (demo mode)');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: _Palette.primary,
@@ -2093,16 +2550,76 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
     );
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _chatInputController.text.trim();
-    if (text.isEmpty) return;
-    setState(() => _chatMessages.add(ChatMessage(text: text, isUser: true)));
-    _chatInputController.clear();
-    _scrollToBottom();
+    if (text.isEmpty || _sendingMessage || _activeChat == null) return;
+    
+    final chatId = _activeChat!['id'];
+    if (chatId == null) return;
+    
+    // If chat is inactive, it will be reactivated when message is sent
+    // Update status optimistically if inactive
+    if (_activeChat!['status'] == 'inactive') {
+      setState(() {
+        _activeChat = {
+          ..._activeChat!,
+          'status': 'active', // Optimistically update status
+        };
+      });
+    }
 
-    Future.delayed(const Duration(milliseconds: 800), () {
-      _addCounsellorMessage(_generateCounsellorResponse(text));
-    });
+    setState(() => _sendingMessage = true);
+    _chatInputController.clear();
+
+    // Add message to UI immediately for better UX
+    if (mounted) {
+      setState(() {
+        _chatMessages.add(ChatMessage(text: text, isUser: true));
+      });
+    _scrollToBottom();
+    }
+
+    try {
+      // Try WebSocket first if connected
+      if (_webSocketChannel != null && !_webSocketConnectionFailed) {
+        try {
+          final clientMessageId = _uuid.v4(); // Generate unique ID for deduplication
+          print('[User Chat] Sending via WebSocket with client_message_id: $clientMessageId');
+          _webSocketChannel!.sink.add(jsonEncode({
+            'message': text,
+            'client_message_id': clientMessageId, // Include for server-side deduplication
+          }));
+          // Wait a moment to see if we get an error response
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            setState(() => _sendingMessage = false);
+          }
+          return;
+        } catch (e) {
+          // WebSocket failed, fallback to API
+          _webSocketConnectionFailed = true;
+          _closeWebSocket();
+          _startMessagePolling();
+        }
+      }
+
+      // Fallback to API
+      await _api.sendChatMessage(chatId as int, text);
+      if (mounted) {
+        setState(() => _sendingMessage = false);
+      }
+    } catch (e) {
+      // Remove message from UI if send failed
+      if (mounted) {
+        setState(() {
+          _chatMessages.removeWhere((m) => m.text == text && m.isUser);
+          _sendingMessage = false;
+        });
+        showErrorSnackBar(context, 'Failed to send message: ${e.toString()}');
+        // Re-add message to input
+        _chatInputController.text = text;
+      }
+    }
   }
 
   void _addCounsellorMessage(String text) {
@@ -2136,13 +2653,22 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
   }
 
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+    // Use post-frame callback to ensure widget is fully built and controller is attached
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        try {
+          final position = _scrollController.position;
+          // Check if position is valid and has content dimensions
+          if (position.hasContentDimensions && position.maxScrollExtent.isFinite) {
+            final targetOffset = position.maxScrollExtent;
+            // Use jumpTo instead of animateTo to avoid state issues
+            _scrollController.jumpTo(targetOffset);
+          }
+        } catch (e) {
+          // Ignore scroll errors - widget might be disposed or not ready
+        }
       }
     });
   }
@@ -2473,9 +2999,22 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
             child: Row(
               children: [
                 Expanded(
+                  child: Focus(
+                    onKeyEvent: (node, event) {
+                      // Handle Enter key to send message (without Shift)
+                      if (event is KeyDownEvent &&
+                          event.logicalKey == LogicalKeyboardKey.enter &&
+                          !HardwareKeyboard.instance.isShiftPressed) {
+                        _sendMessage();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
                   child: TextField(
                     controller: _chatInputController,
+                      focusNode: _chatInputFocusNode,
                     maxLines: null,
+                      textInputAction: TextInputAction.send,
                     decoration: InputDecoration(
                       hintText: 'Type your message...',
                       filled: true,
@@ -2488,6 +3027,7 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
                           horizontal: 20, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2581,10 +3121,8 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () {
-                  setState(() {
-                    _currentFlow = 'actions';
-                    _chatMessages.clear();
-                  });
+                  // Close chat screen and return true to indicate wallet should be refreshed
+                  Navigator.pop(context, true);
                 },
               )
             : null,
@@ -2615,8 +3153,13 @@ class Question {
 class ChatMessage {
   final String text;
   final bool isUser;
+  final DateTime timestamp;
 
-  ChatMessage({required this.text, required this.isUser});
+  ChatMessage({
+    required this.text,
+    required this.isUser,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
 }
 
 class ProfilePage extends StatefulWidget {
@@ -2980,9 +3523,7 @@ class ContactPage extends StatelessWidget {
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Message sent (demo)')),
-                );
+                showSuccessSnackBar(context, 'Message sent (demo)');
                 _controller.clear();
               },
               child: const Text('Send'),

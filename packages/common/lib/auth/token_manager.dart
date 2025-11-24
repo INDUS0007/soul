@@ -2,8 +2,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenManager {
-  static const String _accessTokenKey = 'access_token';
-  static const String _refreshTokenKey = 'refresh_token';
+  static const String _accessTokenKey = 'access';
+  static const String _refreshTokenKey = 'refresh';
   static const String _userRoleKey = 'user_role';
   static const String _userIdKey = 'user_id';
 
@@ -26,8 +26,8 @@ class TokenManager {
     required String role,
     required int userId,
   }) async {
-    await _secureStorage.write(key: 'access', value: accessToken);
-    await _secureStorage.write(key: 'refresh', value: refreshToken);
+    await _secureStorage.write(key: _accessTokenKey, value: accessToken);
+    await _secureStorage.write(key: _refreshTokenKey, value: refreshToken);
     
     final prefs = _prefs ?? await SharedPreferences.getInstance();
     await prefs.setString(_userRoleKey, role);
@@ -35,11 +35,11 @@ class TokenManager {
   }
 
   Future<String?> getAccessToken() async {
-    return await _secureStorage.read(key: 'access');
+    return await _secureStorage.read(key: _accessTokenKey);
   }
 
   Future<String?> getRefreshToken() async {
-    return await _secureStorage.read(key: 'refresh');
+    return await _secureStorage.read(key: _refreshTokenKey);
   }
 
   Future<String?> getUserRole() async {

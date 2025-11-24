@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/common.dart';
+import 'package:common/widgets/widgets.dart';
 
 class MindCareBoosterPage extends StatefulWidget {
   const MindCareBoosterPage({super.key});
@@ -94,7 +96,7 @@ class _MindCareBoosterPageState extends State<MindCareBoosterPage> {
               const Center(child: CircularProgressIndicator()),
             ] else if (_error != null) ...[
               const SizedBox(height: 32),
-              _ErrorMessage(message: _error!, onRetry: () => _loadBoosters()),
+              ErrorMessage(message: _error!, onRetry: () => _loadBoosters()),
             ] else if (_visibleBoosters.isEmpty) ...[
               const SizedBox(height: 48),
               const _EmptyMessage(message: 'No boosters available for now.'),
@@ -279,11 +281,7 @@ class _MindCareBoosterPageState extends State<MindCareBoosterPage> {
               const SizedBox(height: 16),
               TextButton.icon(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Launching resource (demo)…'),
-                    ),
-                  );
+                  showSuccessSnackBar(context, 'Launching resource (demo)…');
                 },
                 icon: const Icon(Icons.open_in_new),
                 label: Text(booster.actionLabel),
@@ -293,9 +291,7 @@ class _MindCareBoosterPageState extends State<MindCareBoosterPage> {
               FilledButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${booster.actionLabel} (demo)…')),
-                  );
+                  showSuccessSnackBar(context, '${booster.actionLabel} (demo)…');
                 },
                 child: Text(booster.actionLabel),
               ),
@@ -428,32 +424,7 @@ class _BoosterTile extends StatelessWidget {
   }
 }
 
-class _ErrorMessage extends StatelessWidget {
-  const _ErrorMessage({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
-        const SizedBox(height: 12),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 12),
-        TextButton.icon(
-          onPressed: onRetry,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Retry'),
-        ),
-      ],
-    );
-  }
-}
+// Removed duplicate _ErrorMessage class - use ErrorMessage from common package
 
 class _EmptyMessage extends StatelessWidget {
   const _EmptyMessage({required this.message});

@@ -1,10 +1,11 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
+# TokenRefreshView is now imported from views
 
 from .views import (
     ChatAcceptView,
     ChatCreateView,
     ChatListView,
+    ChatMessageListView,
     CounsellorAppointmentsView,
     CounsellorProfileView,
     CounsellorStatsView,
@@ -29,7 +30,13 @@ from .views import (
     RegistrationSendOTPView,
     RegistrationVerifyOTPView,
     ReportsAnalyticsView,
+    SessionDurationView,
+    SessionEndView,
+    SessionStartView,
+    SessionSummaryView,
+    SessionUpdateView,
     SupportGroupListView,
+    TokenRefreshView,
     UpcomingSessionDetailView,
     UpcomingSessionListCreateView,
     UserSettingsView,
@@ -62,6 +69,11 @@ urlpatterns = [
     path("support-groups/", SupportGroupListView.as_view()),
     path("sessions/", UpcomingSessionListCreateView.as_view()),
     path("sessions/<int:session_id>/", UpcomingSessionDetailView.as_view()),
+    path("sessions/<int:session_id>/start/", SessionStartView.as_view()),
+    path("sessions/<int:session_id>/end/", SessionEndView.as_view()),
+    path("sessions/<int:session_id>/duration/", SessionDurationView.as_view()),
+    path("sessions/<int:session_id>/update/", SessionUpdateView.as_view()),
+    path("sessions/<int:session_id>/summary/", SessionSummaryView.as_view()),
     path("sessions/quick/", QuickSessionView.as_view()),
     path("reports/analytics/", ReportsAnalyticsView.as_view()),
     path("guidance/resources/", ProfessionalGuidanceListView.as_view()),
@@ -84,5 +96,6 @@ urlpatterns = [
     path("chats/", ChatCreateView.as_view()),
     path("chats/list/", ChatListView.as_view()),
     path("chats/<int:chat_id>/accept/", ChatAcceptView.as_view()),
+    path("chats/<int:chat_id>/messages/", ChatMessageListView.as_view()),
 ]
 

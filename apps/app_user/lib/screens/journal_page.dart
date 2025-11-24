@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:common/widgets/widgets.dart';
+
 class JournalEntry {
   final String id;
   final DateTime date;
@@ -72,12 +74,7 @@ class _MyJournalPageState extends State<MyJournalPage> {
       _isEditing = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Journal entry saved'),
-        backgroundColor: Color(0xFF8B5FBF),
-      ),
-    );
+    showSuccessSnackBar(context, 'Journal entry saved');
   }
 
   void _editEntry(JournalEntry entry) {

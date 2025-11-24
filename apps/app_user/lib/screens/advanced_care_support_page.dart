@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:common/widgets/widgets.dart';
+
 class AdvancedCareSupportPage extends StatefulWidget {
   const AdvancedCareSupportPage({super.key});
 
@@ -131,13 +133,7 @@ class _AdvancedCareSupportPageState extends State<AdvancedCareSupportPage> {
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Booking feature coming soon'),
-                                backgroundColor: Colors.white,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
+                            showSuccessSnackBar(context, 'Booking feature coming soon');
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
@@ -480,13 +476,7 @@ class _AdvancedCareSupportPageState extends State<AdvancedCareSupportPage> {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Booking feature coming soon'),
-                              backgroundColor: _Palette.primary,
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
+                          showSuccessSnackBar(context, 'Booking feature coming soon');
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _Palette.primary,

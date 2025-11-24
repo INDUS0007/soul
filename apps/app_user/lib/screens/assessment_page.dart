@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:common/widgets/widgets.dart';
+
 class AIAssessmentPage extends StatefulWidget {
   const AIAssessmentPage({super.key});
 
@@ -48,13 +50,7 @@ class _AIAssessmentPageState extends State<AIAssessmentPage> {
 
   Future<void> _handleAssessment() async {
     if (_selectedOptions.length < _questions.length) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please answer all questions before getting your assessment.',
-          ),
-        ),
-      );
+      showErrorSnackBar(context, 'Please answer all questions before getting your assessment.');
       return;
     }
 

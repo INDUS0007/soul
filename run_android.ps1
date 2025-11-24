@@ -197,7 +197,7 @@ $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $projectRoot) { $projectRoot = Get-Location }
 
 $backendDir = Join-Path $projectRoot "backend"
-$flutterDir = Join-Path $projectRoot "flutter_app"
+$flutterDir = Join-Path $projectRoot "apps\app_user"
 $pythonExe  = Join-Path $backendDir "venv\Scripts\python.exe"
 $managePy   = Join-Path $backendDir "manage.py"
 
@@ -228,9 +228,52 @@ Write-Step "Resolving Android target"
 $deviceInfo = Resolve-Device -DeviceId $DeviceId -AllowLaunch:(-not $SkipEmulatorLaunch) -EmulatorExecutable $emulatorExe -GpuMode $GpuMode -TimeoutSeconds $DeviceBootTimeoutSeconds
 $targetDeviceId = $deviceInfo.Id
 
-Write-Step "Starting Django backend"
-$backendArgs = @("manage.py", "runserver", "0.0.0.0:$BackendPort")
-$backendProcess = Start-Process -FilePath $pythonExe -WorkingDirectory $backendDir -ArgumentList $backendArgs -NoNewWindow -PassThru
+Write-Step "Running database migrations"
+Push-Location $backendDir
+try {
+    $migrateArgs = @("manage.py", "migrate", "--noinput")
+    $migrateProcess = Start-Process -FilePath $pythonExe -ArgumentList $migrateArgs -WorkingDirectory $backendDir -NoNewWindow -Wait -PassThru -RedirectStandardOutput "$env:TEMP\django_migrate_android.txt" -RedirectStandardError "$env:TEMP\django_migrate_android_err.txt"
+    
+    if ($migrateProcess.ExitCode -ne 0) {
+        Write-Warning "Migration had issues (exit code: $($migrateProcess.ExitCode))"
+        if (Test-Path "$env:TEMP\django_migrate_android_err.txt") {
+            $errorOutput = Get-Content "$env:TEMP\django_migrate_android_err.txt" -Raw
+            if ($errorOutput) {
+                Write-Host $errorOutput -ForegroundColor Yellow
+            }
+        }
+    } else {
+        Write-Host "Migrations applied successfully." -ForegroundColor Green
+    }
+}
+finally {
+    Pop-Location
+}
+
+Write-Step "Starting Django backend with Daphne (ASGI for WebSocket support)"
+# Check if port is already in use
+$existingProcesses = Get-NetTCPConnection -LocalPort $BackendPort -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+if ($existingProcesses) {
+    Write-Host "Found existing server(s) on port $BackendPort. Stopping them..." -ForegroundColor Yellow
+    $existingProcesses | ForEach-Object {
+        try {
+            $proc = Get-Process -Id $_ -ErrorAction SilentlyContinue
+            if ($proc) {
+                Write-Host "  Stopping process: $($proc.ProcessName) (PID: $_)" -ForegroundColor Yellow
+                Stop-Process -Id $_ -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Warning "  Could not stop process (PID: $_). You may need to stop it manually."
+        }
+    }
+    Start-Sleep -Seconds 2
+    Write-Host "Existing server(s) stopped." -ForegroundColor Green
+}
+
+# Use Daphne for ASGI (WebSocket support) - REQUIRED for WebSocket functionality
+# Build arguments as array for Start-Process
+$backendArgs = @("-m", "daphne", "core.asgi:application", "--bind", "0.0.0.0", "--port", "$BackendPort")
+$backendProcess = Start-Process -FilePath $pythonExe -ArgumentList $backendArgs -WorkingDirectory $backendDir -NoNewWindow -PassThru
 Start-Sleep -Seconds 3
 
 Write-Step "Running Flutter app"

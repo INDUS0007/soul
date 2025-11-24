@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class MeditationPage extends StatefulWidget {
   const MeditationPage({super.key});
@@ -143,13 +144,7 @@ class _MeditationPageState extends State<MeditationPage> {
                 ],
                 const SizedBox(height: 32),
                 _ClassesSection(onBook: (plan) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Booking flow for $plan coming soon.',
-                      ),
-                    ),
-                  );
+                  showSuccessSnackBar(context, 'Booking flow for $plan coming soon.');
                 }),
                 const SizedBox(height: 28),
                 Container(
@@ -380,11 +375,7 @@ class _MeditationPageState extends State<MeditationPage> {
             FilledButton.icon(
               onPressed: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Playing "${session.title}" (demo preview)…'),
-                  ),
-                );
+                showSuccessSnackBar(context, 'Playing "${session.title}" (demo preview)…');
               },
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start Session'),
@@ -392,11 +383,7 @@ class _MeditationPageState extends State<MeditationPage> {
             if (session.audioUrl.isNotEmpty)
               TextButton.icon(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Opening audio URL (demo)…'),
-                    ),
-                  );
+                  showSuccessSnackBar(context, 'Opening audio URL (demo)…');
                 },
                 icon: const Icon(Icons.headphones),
                 label: const Text('Listen'),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:common/api/api_client.dart' hide SessionType;
+import 'package:common/widgets/widgets.dart';
 import '../models/counselor.dart';
 import '../models/session.dart';
 import '../widgets/counsellor_quick_info_widget.dart';
@@ -7,6 +8,7 @@ import '../utils/responsive.dart';
 import 'profile_setup_screen.dart';
 import 'appointments_screen.dart';
 import 'chat_session_screen.dart';
+import 'queued_chats_screen.dart';
 import 'audio_call_screen.dart';
 import 'availability_screen.dart';
 import 'client_records_screen.dart';
@@ -38,8 +40,8 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
   void initState() {
     super.initState();
     _loadData();
-    // Auto-refresh every 30 seconds
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    // Auto-refresh every 60 seconds (reduced from 30 to reduce log noise)
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
       if (mounted) {
         _loadData();
       }
@@ -68,8 +70,22 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
       // Load stats
       final statsData = await _api.getCounsellorStats();
 
-      // Load queued chats
-      final queuedChatsData = await _api.getQueuedChats();
+      // Load queued chats with error handling
+      List<Map<String, dynamic>> queuedChatsData = [];
+      try {
+        print('[Dashboard] Fetching queued chats from API...');
+        queuedChatsData = await _api.getQueuedChats();
+        print('[Dashboard] Queued chats loaded successfully: ${queuedChatsData.length}');
+        if (queuedChatsData.isNotEmpty) {
+          print('[Dashboard] Queued chats data: $queuedChatsData');
+        } else {
+          print('[Dashboard] No queued chats found. Checking if chats exist in database...');
+        }
+      } catch (e, stackTrace) {
+        print('[Dashboard] Error loading queued chats: $e');
+        print('[Dashboard] Stack trace: $stackTrace');
+        // Continue with empty list - don't break the whole dashboard
+      }
 
       if (!mounted) return;
 
@@ -103,8 +119,10 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
 
       _stats = statsData;
       pendingVerifications = 0; // Can be updated based on backend
-      queuedChats = statsData['queued_chats'] ?? queuedChatsData.length;
+      // Always use actual API response length for accuracy
+      queuedChats = queuedChatsData.length;
       _queuedChatsList = queuedChatsData;
+      print('[Dashboard] Queued chats count: $queuedChats (from API: ${queuedChatsData.length}, from stats: ${statsData['queued_chats']})');
 
       // Extract client info from the next upcoming session or queued chat
       if (upcomingSessions.isNotEmpty) {
@@ -118,12 +136,18 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
       } else if (_queuedChatsList.isNotEmpty) {
         // Show first queued chat if no upcoming sessions
         final queuedChat = _queuedChatsList.first;
+        final chatIdRaw = queuedChat['id'];
+        final chatId = chatIdRaw is int 
+            ? chatIdRaw 
+            : (chatIdRaw is String 
+                ? int.tryParse(chatIdRaw) 
+                : null);
         _nextClientInfo = {
           'userId': queuedChat['user_username'] ?? queuedChat['user']?.toString() ?? 'N/A',
           'displayName': queuedChat['user_name'] ?? queuedChat['user_username'] ?? 'Client',
           'sessionType': 'chat',
           'isQueued': true,
-          'chatId': queuedChat['id'],
+          'chatId': chatId,
           'initialMessage': queuedChat['initial_message'],
         };
       } else {
@@ -373,6 +397,40 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
               ),
               const SizedBox(height: 12),
               _buildUpcomingSessions(),
+              const SizedBox(height: 20),
+
+              // Queued Chats Section
+              if (_queuedChatsList.isNotEmpty) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Queued Chats',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: Responsive.heading2(context),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const QueuedChatsScreen(),
+                          ),
+                        ).then((_) {
+                          // Refresh data when returning
+                          _loadData();
+                        });
+                      },
+                      child: const Text('View All'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildQueuedChats(),
+                const SizedBox(height: 20),
+              ],
               const SizedBox(height: 20), // Bottom padding for safer scrolling
             ],
           ),
@@ -555,11 +613,25 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
         ),
         const SizedBox(width: 12),
         Expanded(
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const QueuedChatsScreen(),
+                ),
+              ).then((_) {
+                // Refresh data when returning
+                _loadData();
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
           child: _buildStatCard(
             'Queued Chats',
             '$queuedChats',
             Icons.chat_bubble_outline,
             Colors.purple,
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -869,6 +941,115 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
     }
   }
 
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final difference = now.difference(time);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${time.day}/${time.month}/${time.year}';
+    }
+  }
+
+  Widget _buildQueuedChats() {
+    if (_queuedChatsList.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: Text(
+              'No queued chats',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: _queuedChatsList.map((chat) {
+        // Ensure chatId is an int
+        final chatIdRaw = chat['id'];
+        final chatId = chatIdRaw is int 
+            ? chatIdRaw 
+            : (chatIdRaw is String 
+                ? int.tryParse(chatIdRaw) 
+                : null);
+        final userName = chat['user_name'] ?? chat['user_username'] ?? 'Client';
+        final initialMessage = chat['initial_message']?.toString() ?? 'No initial message';
+        final createdAt = chat['created_at'] != null
+            ? DateTime.tryParse(chat['created_at'].toString())
+            : null;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          elevation: 1,
+          child: ListTile(
+            contentPadding: EdgeInsets.all(
+              Responsive.isMobile(context) ? 12 : 16,
+            ),
+            leading: CircleAvatar(
+              radius: Responsive.isMobile(context) ? 24 : 28,
+              backgroundColor: Colors.purple.withOpacity(0.2),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: Colors.purple,
+              ),
+            ),
+            title: Text(
+              userName,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: Responsive.body(context),
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(
+                  initialMessage.length > 50
+                      ? '${initialMessage.substring(0, 50)}...'
+                      : initialMessage,
+                  style: TextStyle(fontSize: Responsive.caption(context)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (createdAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Received: ${_formatTime(createdAt)}',
+                    style: TextStyle(
+                      fontSize: Responsive.caption(context),
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            trailing: ElevatedButton(
+              onPressed: chatId != null 
+                  ? () => _handleAcceptQueuedChat(chatId)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Accept'),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Future<void> _handleAcceptQueuedChat(int? chatId) async {
     if (chatId == null) return;
 
@@ -878,12 +1059,14 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
       if (!mounted) return;
 
       // Create a session from the accepted chat
+      final now = DateTime.now();
       final session = Session(
         id: chatId.toString(),
         clientId: chatData['user_username'] ?? chatData['user']?.toString() ?? '',
         clientName: chatData['user_name'] ?? chatData['user_username'] ?? 'Client',
         counselorId: counselor?.id ?? '',
-        scheduledTime: DateTime.now(),
+        scheduledTime: now,
+        startTime: now, // Set start time immediately
         type: SessionType.chat,
         status: SessionStatus.inProgress,
         durationMinutes: 60,
@@ -902,12 +1085,7 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to accept chat: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showErrorSnackBar(context, 'Failed to accept chat: $e');
     }
   }
 
@@ -939,9 +1117,7 @@ class _CounselorDashboardState extends State<CounselorDashboard> {
             onPressed: () {
               // POST /api/counselor/availability/block
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Time blocked successfully')),
-              );
+              showSuccessSnackBar(context, 'Time blocked successfully');
             },
             child: const Text('Confirm'),
           ),

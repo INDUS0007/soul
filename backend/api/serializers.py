@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from .models import (
     Chat,
+    ChatMessage,
     CounsellorProfile,
     EmailOTP,
     GuidanceResource,
@@ -233,6 +234,9 @@ class SupportGroupJoinSerializer(serializers.Serializer):
 
 
 class UpcomingSessionSerializer(serializers.ModelSerializer):
+    duration_seconds = serializers.IntegerField(read_only=True)
+    duration_minutes = serializers.IntegerField(read_only=True)
+    
     class Meta:
         model = UpcomingSession
         fields = (
@@ -243,10 +247,17 @@ class UpcomingSessionSerializer(serializers.ModelSerializer):
             "counsellor_name",
             "notes",
             "is_confirmed",
+            "actual_start_time",
+            "actual_end_time",
+            "session_status",
+            "risk_level",
+            "manual_flag",
+            "duration_seconds",
+            "duration_minutes",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at", "duration_seconds", "duration_minutes")
 
 
 class ChatSerializer(serializers.ModelSerializer):
@@ -254,6 +265,8 @@ class ChatSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
     counsellor_username = serializers.CharField(source="counsellor.username", read_only=True, allow_null=True)
     counsellor_name = serializers.SerializerMethodField()
+    current_duration_minutes = serializers.IntegerField(read_only=True)
+    current_estimated_cost = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Chat
@@ -271,8 +284,18 @@ class ChatSerializer(serializers.ModelSerializer):
             "started_at",
             "ended_at",
             "updated_at",
+            "billed_amount",
+            "duration_minutes",
+            "is_billed",
+            "billing_processed_at",
+            "current_duration_minutes",
+            "current_estimated_cost",
         )
-        read_only_fields = ("id", "user", "counsellor", "started_at", "ended_at", "created_at", "updated_at")
+        read_only_fields = (
+            "id", "user", "counsellor", "started_at", "ended_at", "created_at", "updated_at",
+            "billed_amount", "duration_minutes", "is_billed", "billing_processed_at",
+            "current_duration_minutes", "current_estimated_cost"
+        )
 
     def get_user_name(self, obj):
         if hasattr(obj.user, "profile"):
@@ -287,6 +310,39 @@ class ChatSerializer(serializers.ModelSerializer):
 
 class ChatCreateSerializer(serializers.Serializer):
     initial_message = serializers.CharField(required=False, allow_blank=True)
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source="sender.username", read_only=True)
+    sender_name = serializers.SerializerMethodField()
+    is_user = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatMessage
+        fields = (
+            "id",
+            "chat",
+            "sender",
+            "sender_username",
+            "sender_name",
+            "text",
+            "is_user",
+            "created_at",
+        )
+        read_only_fields = ("id", "sender", "created_at")
+
+    def get_sender_name(self, obj):
+        if hasattr(obj.sender, "profile"):
+            return obj.sender.profile.full_name or obj.sender.username
+        return obj.sender.username
+
+    def get_is_user(self, obj):
+        # Message is from user if sender is the chat's user (not the counsellor)
+        return obj.sender == obj.chat.user
+
+
+class ChatMessageCreateSerializer(serializers.Serializer):
+    text = serializers.CharField(required=True, allow_blank=False)
 
 
 class SendOTPSerializer(serializers.Serializer):

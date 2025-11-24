@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -179,9 +180,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error ?? 'Failed to send OTP')),
-      );
+      showErrorSnackBar(context, error ?? 'Failed to send OTP');
       return;
     }
 
@@ -192,9 +191,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _otpFieldSeed++;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('OTP sent to $email')),
-    );
+    showSuccessSnackBar(context, 'OTP sent to $email');
   }
 
   Future<void> _verifyOtp() async {
@@ -202,9 +199,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!(_otpFormKey.currentState?.validate() ?? false)) return;
 
     if (!_otpSent) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please request an OTP first')),
-      );
+      showErrorSnackBar(context, 'Please request an OTP first');
       return;
     }
 
@@ -225,9 +220,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     if (!ok || (token == null || token.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error ?? 'OTP verification failed')),
-      );
+      showErrorSnackBar(context, error ?? 'OTP verification failed');
       return;
     }
 
@@ -237,31 +230,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _currentStep = 2;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Email verified')),
-    );
+    showSuccessSnackBar(context, 'Email verified');
   }
 
   Future<void> _completeSignup() async {
     if (!_otpVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please verify your email OTP first')),
-      );
+      showErrorSnackBar(context, 'Please verify your email OTP first');
       return;
     }
     if (_otpToken == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('Verification token missing. Please verify OTP again.')),
-      );
+      showErrorSnackBar(context, 'Verification token missing. Please verify OTP again.');
       return;
     }
     if (!(_passwordFormKey.currentState?.validate() ?? false)) return;
     if (!_agree) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must agree to Terms & Privacy')),
-      );
+      showErrorSnackBar(context, 'You must agree to Terms & Privacy');
       return;
     }
 
@@ -295,16 +278,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _registering = false);
 
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err ?? 'Registration failed')),
-      );
+      showErrorSnackBar(context, err ?? 'Registration failed');
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text('Account created for $fullName. You can now sign in.')),
-    );
+    showSuccessSnackBar(context, 'Account created for $fullName. You can now sign in.');
     Navigator.pop(context);
   }
 
@@ -641,14 +619,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const Text('I agree to the '),
                       _LinkText(
                         label: 'Terms & Conditions',
-                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Open Terms URL'))),
+                        onTap: () => showSuccessSnackBar(context, 'Open Terms URL'),
                       ),
                       const Text(' and '),
                       _LinkText(
                         label: 'Privacy Policy',
-                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Open Privacy URL'))),
+                        onTap: () => showSuccessSnackBar(context, 'Open Privacy URL'),
                       ),
                       const Text('.'),
                     ],

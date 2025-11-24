@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:common/api/api_client.dart';
+import 'package:common/utils/app_logger.dart';
 import 'screens/counselor_dashboard.dart';
 import 'screens/login_screen.dart';
 
+// Global logger instance for app_counsellor
+final appLogger = AppLogger('COUNSELLOR_APP');
+
 void main() {
+  appLogger.info('=== COUNSELLOR APP STARTING ===');
+  appLogger.debug('Initializing Counsellor App...');
   WidgetsFlutterBinding.ensureInitialized();
 
   // Force portrait orientation for mobile
@@ -65,7 +71,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
       final profile = await _api.getCounsellorProfile();
       if (mounted) {
         setState(() {
-          _isAuthenticated = profile != null;
+          // Profile is a Map, so check if it's not empty
+          _isAuthenticated = profile.isNotEmpty;
           _checking = false;
         });
       }

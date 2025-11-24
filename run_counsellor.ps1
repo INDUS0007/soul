@@ -1,9 +1,13 @@
 # Runs the Django backend and Flutter Counsellor App together.
 # Usage: .\run_counsellor.ps1 [-Release] [-Device <device>]
+#        .\run_counsellor.ps1 -release -device windows
+#        .\run_counsellor.ps1 -r -d chrome
 
 param(
+    [Alias('r')]
     [switch]$Release,
-    [ValidateSet('windows', 'chrome', 'edge', 'web-server', 'android')]
+    [Alias('d')]
+    [ValidateSet('windows', 'chrome', 'edge', 'web-server', 'android', ignorecase=$true)]
     [string]$Device = 'chrome'
 )
 
@@ -44,34 +48,58 @@ Write-Host "Device: $Device" -ForegroundColor Green
 Write-Host "Mode: $(if ($Release) { 'Release' } else { 'Debug' })" -ForegroundColor Green
 Write-Host ""
 
-Write-Host "[1/2] Starting Django backend..." -ForegroundColor Cyan
-Write-Host "Backend will run in a separate window to show logs." -ForegroundColor Yellow
+Write-Host "[1/2] Starting Django backend with Daphne (ASGI)..." -ForegroundColor Cyan
+Write-Host "Backend will run in background in this terminal." -ForegroundColor Yellow
+Write-Host "WebSocket support: ENABLED" -ForegroundColor Green
 Write-Host ""
 
-# Create a temporary script to run the backend with visible output
-$backendScript = @"
-Write-Host '========================================' -ForegroundColor Cyan
-Write-Host 'Django Backend Server' -ForegroundColor Cyan
-Write-Host '========================================' -ForegroundColor Cyan
-Write-Host 'API: http://127.0.0.1:8000/api' -ForegroundColor Green
-Write-Host 'Press Ctrl+C to stop the server' -ForegroundColor Yellow
-Write-Host ''
-Set-Location '$backendPath'
-& '$pythonExe' manage.py runserver 127.0.0.1:8000
-Write-Host ''
-Write-Host 'Backend server stopped.' -ForegroundColor Yellow
-Write-Host 'Press any key to close this window...' -ForegroundColor Gray
-`$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-"@
+# Check if port 8000 is already in use
+Write-Host "Checking for existing server on port 8000..." -ForegroundColor Cyan
+$existingProcesses = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+if ($existingProcesses) {
+    Write-Host "Found existing server(s) on port 8000. Stopping them..." -ForegroundColor Yellow
+    $existingProcesses | ForEach-Object {
+        try {
+            $proc = Get-Process -Id $_ -ErrorAction SilentlyContinue
+            if ($proc) {
+                Write-Host "  Stopping process: $($proc.ProcessName) (PID: $_)" -ForegroundColor Yellow
+                Stop-Process -Id $_ -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Warning "  Could not stop process (PID: $_). You may need to stop it manually."
+        }
+    }
+    Start-Sleep -Seconds 2
+    Write-Host "Existing server(s) stopped." -ForegroundColor Green
+}
 
-$backendScriptPath = Join-Path $env:TEMP "backend_$(Get-Date -Format 'yyyyMMdd_HHmmss').ps1"
-$backendScript | Out-File -FilePath $backendScriptPath -Encoding UTF8
+# Set environment variable for unbuffered output
+[Environment]::SetEnvironmentVariable('PYTHONUNBUFFERED', '1', 'Process')
 
-# Start backend in a new window
-$backendProcess = Start-Process powershell.exe -ArgumentList "-NoExit", "-File", "`"$backendScriptPath`"" -PassThru
+# Start backend in background job
+Write-Host "Starting backend server..." -ForegroundColor Cyan
+$backendJob = Start-Job -ScriptBlock {
+    param($pythonExe, $backendPath)
+    Set-Location $backendPath
+    & $pythonExe -m daphne core.asgi:application --bind 0.0.0.0 --port 8000 2>&1
+} -ArgumentList $pythonExe, $backendPath
 
-Write-Host "Backend started in separate window (PID: $($backendProcess.Id))" -ForegroundColor Green
+# Wait a moment for server to start
 Start-Sleep -Seconds 3
+
+# Check if backend started successfully
+$jobState = $backendJob.State
+if ($jobState -eq 'Running') {
+    Write-Host "Backend started successfully (Job ID: $($backendJob.Id))" -ForegroundColor Green
+    Write-Host "API: http://127.0.0.1:8000/api" -ForegroundColor Green
+    Write-Host "WebSocket: ws://127.0.0.1:8000/ws/chat/<chat_id>/" -ForegroundColor Green
+} else {
+    Write-Host "Backend job state: $jobState" -ForegroundColor Yellow
+    $output = Receive-Job -Job $backendJob
+    if ($output) {
+        Write-Host "Backend output: $output" -ForegroundColor Yellow
+    }
+}
 Write-Host ""
 
 if ($Device -eq 'windows') {
@@ -107,8 +135,8 @@ try {
         $flutterArgs += '--release'
     }
     
-    Write-Host "Backend is running in a separate window - check that window for backend logs." -ForegroundColor Cyan
-    Write-Host "Starting Flutter app (logs will appear below)...`n" -ForegroundColor Cyan
+    Write-Host "Backend is running in background. Starting Flutter app (logs will appear below)...`n" -ForegroundColor Cyan
+    Write-Host "Note: Backend logs are running in background. Press Ctrl+C to stop both." -ForegroundColor Yellow
     Write-Host "----------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
     
@@ -126,29 +154,15 @@ finally {
     Pop-Location
     Write-Host "`nStopping Django backend..." -ForegroundColor Yellow
     
-    # Stop backend process (this will close the window)
-    if ($backendProcess -and -not $backendProcess.HasExited) {
+    # Stop backend job
+    if ($backendJob -and $backendJob.State -eq 'Running') {
         try {
-            # Try to close gracefully first
-            $backendProcess.CloseMainWindow() | Out-Null
-            Start-Sleep -Seconds 1
-            if (-not $backendProcess.HasExited) {
-                $backendProcess.Kill()
-                $backendProcess.WaitForExit(5000)
-            }
+            Stop-Job -Job $backendJob
+            Remove-Job -Job $backendJob -Force
+            Write-Host "Backend stopped." -ForegroundColor Green
         }
         catch {
-            Write-Warning "Error stopping backend process: $_"
-        }
-    }
-    
-    # Clean up temp script
-    if (Test-Path $backendScriptPath) {
-        try {
-            Remove-Item $backendScriptPath -Force -ErrorAction SilentlyContinue
-        }
-        catch {
-            # Ignore cleanup errors
+            Write-Warning "Error stopping backend job: $_"
         }
     }
 }

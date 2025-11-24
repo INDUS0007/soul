@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class ScheduleSessionPage extends StatefulWidget {
   const ScheduleSessionPage({super.key});
@@ -81,9 +82,7 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
     final date = _selectedDate;
     final time = _selectedTime;
     if (date == null || time == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a date and a time.')),
-      );
+      showErrorSnackBar(context, 'Please select a date and a time.');
       return;
     }
 
@@ -100,11 +99,7 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
     final recommended = now.add(const Duration(hours: 1));
 
     if (start.isBefore(earliestAllowed)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please choose a time at least 10 minutes from now.'),
-        ),
-      );
+      showErrorSnackBar(context, 'Please choose a time at least 10 minutes from now.');
       return;
     }
 
@@ -127,19 +122,11 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
       final formatted =
           DateFormat('dd MMM yyyy • h:mm a').format(session.startTime.toLocal());
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Session scheduled for $formatted',
-          ),
-        ),
-      );
+      showSuccessSnackBar(context, 'Session scheduled for $formatted');
       Navigator.pop(context, session);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not schedule session: $error')),
-      );
+      showErrorSnackBar(context, 'Could not schedule session: $error');
       setState(() => _saving = false);
     }
   }

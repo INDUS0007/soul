@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import timedelta
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -18,6 +19,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    "channels",
     "api",
 ]
 
@@ -51,6 +53,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "core.wsgi.application"
+ASGI_APPLICATION = "core.asgi.application"
 
 DATABASES = {
     "default": {
@@ -103,13 +106,26 @@ CORS_ALLOW_ALL_ORIGINS = True
 # EMAIL_HOST_PASSWORD = os.environ.get("SENDGRID_PASSWORD")
 # EMAIL_USE_TLS = True
 # --- Email Configuration ---
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'python.nexnoratech@gmail.com'
-EMAIL_HOST_PASSWORD = 'aazm gwze vplo kehg'
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# For development: Use console backend to see OTPs in terminal
+# For production: Use SMTP backend with proper credentials
+import os
+USE_CONSOLE_EMAIL = os.environ.get('USE_CONSOLE_EMAIL', 'false').lower() == 'true'
+
+if USE_CONSOLE_EMAIL:
+    # Development: Print emails to console (useful for debugging)
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = 'Soul Support <no-reply@soulsupport.example>'
+    print("[EMAIL] Using console backend - emails will appear in terminal")
+else:
+    # Production: Use SMTP backend
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = 'python.nexnoratech@gmail.com'
+    EMAIL_HOST_PASSWORD = 'aazm gwze vplo kehg'
+    DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+    print(f"[EMAIL] Using SMTP backend - {EMAIL_HOST}:{EMAIL_PORT}")
 
 # Optional: Email verification
 def verified_callback(user):
@@ -122,3 +138,108 @@ EMAIL_FROM_ADDRESS = 'python.nexnoratech@gmail.com'
 EMAIL_MAIL_SUBJECT = 'Verify your email'
 EMAIL_PAGE_TEMPLATE = 'email_verification.html'
 EMAIL_PAGE_DOMAIN = 'http://localhost:8000'
+
+# Channels (WebSocket) configuration
+# Using in-memory channel layer for development (no Redis required)
+# For production, switch to Redis: "channels_redis.core.RedisChannelLayer"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+# Logging configuration - ALL logs to terminal/console ONLY (no files)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,  # Keep existing loggers but redirect to console
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+            "stream": "ext://sys.stdout",  # Output to stdout (terminal)
+        },
+        # NO FILE HANDLERS - all logs go to terminal only
+    },
+    "root": {
+        "handlers": ["console"],  # Root logger uses console only
+        "level": "INFO",
+    },
+    "loggers": {
+        # Django framework loggers
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,  # Don't propagate to root
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.server": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.security": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Channels/WebSocket loggers
+        "channels": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "channels.server": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "daphne": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "daphne.server": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Application loggers
+        "api": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat_consumer_debug": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Catch-all for any other loggers
+        "": {  # Empty string = root logger
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+    # Explicitly disable any file handlers that might be added
+    "filters": {},
+}

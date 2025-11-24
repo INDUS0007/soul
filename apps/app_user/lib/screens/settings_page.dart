@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 import 'login_screen.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -79,9 +80,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _settings = previous;
         _updating = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Update failed: $error')),
-      );
+      showErrorSnackBar(context, 'Update failed: $error');
     }
   }
 

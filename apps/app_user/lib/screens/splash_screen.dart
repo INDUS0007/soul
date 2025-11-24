@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import '../main.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
@@ -41,8 +42,7 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       profile = await _api.getProfile();
     } catch (error, stackTrace) {
-      debugPrint('Splash bootstrap failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      appLogger.error('Splash bootstrap failed', error, stackTrace);
     }
     if (!mounted) return;
     Navigator.pushReplacement(

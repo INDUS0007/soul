@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 import 'schedule_session_page.dart';
 
 class UpcomingSessionsPage extends StatefulWidget {
@@ -222,7 +223,7 @@ class _UpcomingSessionsPageState extends State<UpcomingSessionsPage> {
     notesController.dispose();
 
     if (title.isEmpty || counsellor.isEmpty) {
-      _showSnackBar('Please fill in the title and counsellor name.');
+      showErrorSnackBar(context, 'Please fill in the title and counsellor name.');
       return;
     }
 
@@ -241,7 +242,7 @@ class _UpcomingSessionsPageState extends State<UpcomingSessionsPage> {
               (a, b) => a.startTime.compareTo(b.startTime),
             );
         });
-        _showSnackBar('Session booked successfully!');
+        showSuccessSnackBar(context, 'Session booked successfully!');
       } else {
         final updated = await _api.updateUpcomingSession(
           sessionId: session.id,
@@ -258,14 +259,14 @@ class _UpcomingSessionsPageState extends State<UpcomingSessionsPage> {
               if (item.id == session.id) updated else item,
           ]..sort((a, b) => a.startTime.compareTo(b.startTime));
         });
-        _showSnackBar('Session updated!');
+        showSuccessSnackBar(context, 'Session updated!');
       }
     } on ApiClientException catch (error) {
       if (!mounted) return;
-      _showSnackBar(error.message);
+      showErrorSnackBar(context, error.message);
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Something went wrong. Please try again. ($error)');
+      showErrorSnackBar(context, 'Something went wrong. Please try again. ($error)');
     }
   }
 
@@ -297,18 +298,14 @@ class _UpcomingSessionsPageState extends State<UpcomingSessionsPage> {
       setState(() {
         _sessions = _sessions.where((item) => item.id != session.id).toList();
       });
-      _showSnackBar('Session cancelled.');
+      showSuccessSnackBar(context, 'Session cancelled.');
     } on ApiClientException catch (error) {
       if (!mounted) return;
-      _showSnackBar(error.message);
+      showErrorSnackBar(context, error.message);
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Unable to cancel session. Please try again. ($error)');
+      showErrorSnackBar(context, 'Unable to cancel session. Please try again. ($error)');
     }
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openSchedulePage() async {
@@ -322,7 +319,7 @@ class _UpcomingSessionsPageState extends State<UpcomingSessionsPage> {
         _sessions = [..._sessions, result]
           ..sort((a, b) => a.startTime.compareTo(b.startTime));
       });
-      _showSnackBar('Session booked successfully!');
+      showSuccessSnackBar(context, 'Session booked successfully!');
     } else {
       await _loadSessions(showLoader: false);
     }
@@ -674,7 +671,7 @@ class _UpcomingSessionsPageState extends State<UpcomingSessionsPage> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () {
-                    _showSnackBar('Join session link will open soon.');
+                    showSuccessSnackBar(context, 'Join session link will open soon.');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF8B5FBF),

@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class ApiClientException implements Exception {
   ApiClientException(this.message);
@@ -1574,7 +1576,7 @@ class ApiClient {
       (access) => http.post(
         Uri.parse('$base/wallet/recharge/'),
         headers: _headers(access, {'Content-Type': 'application/json'}),
-        body: jsonEncode({'minutes': amount}),
+        body: jsonEncode({'amount': amount}),
       ),
     );
 
@@ -2330,5 +2332,169 @@ class ApiClient {
     throw ApiClientException(
       'Unable to end session: ${_extractErrorMessage(response)}',
     );
+  }
+
+  /// Get current session duration from backend
+  Future<Map<String, dynamic>> getSessionDuration(int sessionId) async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/sessions/$sessionId/duration/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to get session duration: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Update session (risk_level, notes, manual_flag)
+  Future<Map<String, dynamic>> updateSession(
+    int sessionId, {
+    String? riskLevel,
+    String? manualFlag,
+    String? notes,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (riskLevel != null) payload['risk_level'] = riskLevel;
+    if (manualFlag != null) payload['manual_flag'] = manualFlag;
+    if (notes != null) payload['notes'] = notes;
+
+    final response = await _sendAuthorized(
+      (access) => http.patch(
+        Uri.parse('$base/sessions/$sessionId/update/'),
+        headers: _headers(access, {'Content-Type': 'application/json'}),
+        body: jsonEncode(payload),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to update session: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Get complete session summary
+  Future<Map<String, dynamic>> getSessionSummary(int sessionId) async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/sessions/$sessionId/summary/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to get session summary: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  // Chat message methods
+  Future<List<Map<String, dynamic>>> getChatMessages(int chatId) async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/chats/$chatId/messages/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as List<dynamic>;
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
+
+    throw ApiClientException(
+      'Unable to load chat messages: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  Future<Map<String, dynamic>> sendChatMessage(int chatId, String text) async {
+    final response = await _sendAuthorized(
+      (access) => http.post(
+        Uri.parse('$base/chats/$chatId/messages/'),
+        headers: _headers(access, {'Content-Type': 'application/json'}),
+        body: jsonEncode({'text': text}),
+      ),
+    );
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to send message: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  // WebSocket connection for real-time chat
+  Future<WebSocketChannel> connectChatWebSocket(int chatId) async {
+    // Get access token for authentication
+    final accessToken = await _accessToken;
+    if (accessToken == null) {
+      throw ApiClientException('Not authenticated. Please login first.');
+    }
+
+    // Get WebSocket URL (ws:// for development, wss:// for production)
+    // Note: WebSocket routing is at root level, not under /api/
+    // base is http://127.0.0.1:8000/api, so we need to remove /api for WebSocket
+    String httpBase = base;
+    if (httpBase.endsWith('/api')) {
+      httpBase = httpBase.substring(0, httpBase.length - 4);
+    } else if (httpBase.endsWith('/api/')) {
+      httpBase = httpBase.substring(0, httpBase.length - 5);
+    }
+    
+    // Determine WebSocket scheme based on HTTP scheme
+    String wsScheme = 'ws://';
+    if (httpBase.startsWith('https://')) {
+      wsScheme = 'wss://';
+      httpBase = httpBase.substring(8); // Remove 'https://'
+    } else if (httpBase.startsWith('http://')) {
+      httpBase = httpBase.substring(7); // Remove 'http://'
+    }
+    
+    // Construct WebSocket URL with proper path (ensure trailing slash matches server route)
+    final wsPath = '/ws/chat/$chatId/'; // Match server route exactly
+    final wsUrl = '$wsScheme$httpBase$wsPath?token=${Uri.encodeComponent(accessToken)}';
+    
+    // Log the exact URI for debugging
+    if (kDebugMode) {
+      print('[WebSocket] Connecting to: $wsUrl');
+      print('[WebSocket] Chat ID: $chatId');
+      print('[WebSocket] Scheme: $wsScheme');
+    }
+    
+    try {
+      final uri = Uri.parse(wsUrl);
+      final channel = WebSocketChannel.connect(uri);
+      
+      if (kDebugMode) {
+        print('[WebSocket] Connection established successfully');
+      }
+      
+      return channel;
+    } catch (e, stackTrace) {
+      // Log detailed error information for debugging
+      if (kDebugMode) {
+        print('[WebSocket] Connection failed!');
+        print('[WebSocket] URL attempted: $wsUrl');
+        print('[WebSocket] Error: $e');
+        print('[WebSocket] Stack trace: $stackTrace');
+      }
+      // Re-throw as ApiClientException for consistent error handling
+      throw ApiClientException('WebSocket connection failed: $e');
+    }
   }
 }

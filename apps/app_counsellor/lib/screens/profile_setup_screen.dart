@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:common/widgets/widgets.dart';
 import '../models/counselor.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -395,11 +396,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             onPressed: () {
               Navigator.pop(context);
               // POST /api/providers/{id}/documents
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Documents uploaded successfully'),
-                ),
-              );
+              showSuccessSnackBar(context, 'Documents uploaded successfully');
             },
             icon: const Icon(Icons.upload_file),
             label: const Text('Choose Files'),
@@ -412,9 +409,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void _saveProfile() {
     if (_formKey.currentState?.validate() ?? false) {
       // POST /api/providers/{id}/profile
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully')),
-      );
+      showSuccessSnackBar(context, 'Profile updated successfully');
       Navigator.pop(context);
     }
   }

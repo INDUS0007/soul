@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:common/api/api_client.dart';
+import 'package:common/widgets/widgets.dart';
 
 class MusicPage extends StatefulWidget {
   const MusicPage({super.key});
@@ -58,14 +59,10 @@ class _MusicPageState extends State<MusicPage> {
     setState(() {
       if (_playingTrackId == track.id.toString()) {
         _playingTrackId = null;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Paused "${track.title}"')),
-        );
+        showSuccessSnackBar(context, 'Paused "${track.title}"');
       } else {
         _playingTrackId = track.id.toString();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Playing "${track.title}" (demo preview)')),
-        );
+        showSuccessSnackBar(context, 'Playing "${track.title}" (demo preview)');
       }
     });
   }

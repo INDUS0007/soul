@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:common/widgets/widgets.dart';
+
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -78,9 +80,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _otpSent = true;
         _step = 1;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OTP sent (demo code: 654321)')),
-      );
+      showSuccessSnackBar(context, 'OTP sent (demo code: 654321)');
     }
   }
 
@@ -91,28 +91,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           _otpVerified = true;
           _step = 2;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('OTP verified')), 
-        );
+        showSuccessSnackBar(context, 'OTP verified');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid OTP')),
-        );
+        showErrorSnackBar(context, 'Invalid OTP');
       }
     }
   }
 
   void _resetPassword() {
     if (!_otpVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verify OTP before resetting password')),
-      );
+      showErrorSnackBar(context, 'Verify OTP before resetting password');
       return;
     }
     if (_resetFormKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password updated (demo)')),
-      );
+      showSuccessSnackBar(context, 'Password updated (demo)');
       Navigator.pop(context);
     }
   }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:common/widgets/widgets.dart';
+import '../main.dart';
 import '../models/availability.dart';
 
 class AvailabilityScreen extends StatefulWidget {
@@ -399,11 +401,9 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
     ).toJson();
 
     // Send availabilityData to API
-    debugPrint('Saving availability: $availabilityData');
+    appLogger.debug('Saving availability: $availabilityData');
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Availability saved successfully')),
-    );
+    showSuccessSnackBar(context, 'Availability saved successfully');
   }
 
   String _formatTime(DateTime time) {

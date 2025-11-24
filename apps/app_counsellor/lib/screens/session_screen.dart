@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:common/widgets/widgets.dart';
+import 'package:common/api/api_client.dart' hide SessionType;
 import '../models/session.dart';
 import 'dart:async';
 
@@ -18,6 +20,7 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _isSessionActive = false;
   int _elapsedSeconds = 0;
   Timer? _timer;
+  final ApiClient _api = ApiClient();
 
   @override
   void initState() {
@@ -107,32 +110,61 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
-  void _completeSession() {
+  Future<void> _completeSession() async {
     // POST /api/sessions/{id}/end
-    setState(() {
-      _session = Session(
-        id: _session.id,
-        clientId: _session.clientId,
-        clientName: _session.clientName,
-        clientPhoto: _session.clientPhoto,
-        counselorId: _session.counselorId,
-        scheduledTime: _session.scheduledTime,
-        startTime: _session.startTime,
-        endTime: DateTime.now(),
-        type: _session.type,
-        status: SessionStatus.completed,
-        notes: _notesController.text,
-        riskLevel: _selectedRisk,
-        isEscalated: _session.isEscalated,
-        durationMinutes: _elapsedSeconds ~/ 60,
-      );
-      _isSessionActive = false;
-    });
+    try {
+      // Update session risk level and notes before ending
+      final sessionId = int.tryParse(_session.id.toString()) ?? _session.id as int;
+      if (_selectedRisk != _session.riskLevel || _notesController.text.trim().isNotEmpty) {
+        try {
+          await _api.updateSession(
+            sessionId,
+            riskLevel: _selectedRisk.name,
+            notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+          );
+        } catch (e) {
+          print('Error updating session before ending: $e');
+          // Continue to end session even if update fails
+        }
+      }
 
-    _showSessionSummaryDialog();
+      // Call endSession API
+      final response = await _api.endSession(sessionId);
+      print('Session ended successfully: $response');
+
+      if (!mounted) return;
+      
+      setState(() {
+        _session = Session(
+          id: _session.id,
+          clientId: _session.clientId,
+          clientName: _session.clientName,
+          clientPhoto: _session.clientPhoto,
+          counselorId: _session.counselorId,
+          scheduledTime: _session.scheduledTime,
+          startTime: _session.startTime,
+          endTime: DateTime.now(),
+          type: _session.type,
+          status: SessionStatus.completed,
+          notes: _notesController.text,
+          riskLevel: _selectedRisk,
+          isEscalated: _session.isEscalated,
+          durationMinutes: _elapsedSeconds ~/ 60,
+        );
+        _isSessionActive = false;
+      });
+
+      _showSessionSummaryDialog(response);
+    } catch (e) {
+      print('Error ending session: $e');
+      if (!mounted) return;
+      showErrorSnackBar(context, 'Failed to end session: ${e.toString()}');
+    }
   }
 
-  void _showSessionSummaryDialog() {
+  void _showSessionSummaryDialog([Map<String, dynamic>? endResponse]) {
+    final billingInfo = endResponse?['billing'] as Map<String, dynamic>?;
+    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -148,6 +180,13 @@ class _SessionScreenState extends State<SessionScreen> {
               Text('Duration: ${_formatDuration(_elapsedSeconds)}'),
               const SizedBox(height: 8),
               Text('Risk Level: ${_selectedRisk.name}'),
+              if (billingInfo != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Billed Amount: ₹${billingInfo['billed_amount'] ?? 0}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
               const SizedBox(height: 16),
               const Text(
                 'Recommended Next Steps:',
@@ -169,9 +208,7 @@ class _SessionScreenState extends State<SessionScreen> {
             onPressed: () {
               Navigator.pop(context);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Session completed successfully')),
-              );
+              showSuccessSnackBar(context, 'Session completed successfully');
             },
             child: const Text('Save & Close'),
           ),
@@ -418,9 +455,7 @@ class _SessionScreenState extends State<SessionScreen> {
                       ElevatedButton.icon(
                         onPressed: () {
                           // POST /api/sessions/{id}/notes
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Notes saved')),
-                          );
+                          showSuccessSnackBar(context, 'Notes saved');
                         },
                         icon: const Icon(Icons.save),
                         label: const Text('Save Notes'),
@@ -533,6 +568,8 @@ class _SessionScreenState extends State<SessionScreen> {
         return Icons.phone;
       case SessionType.chat:
         return Icons.chat;
+      default:
+        return Icons.question_mark;
     }
   }
 
@@ -611,14 +648,7 @@ class _SessionScreenState extends State<SessionScreen> {
             onPressed: () {
               // POST /api/incidents
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Incident report created. Authorities notified.',
-                  ),
-                  backgroundColor: Colors.orange,
-                ),
-              );
+              showSuccessSnackBar(context, 'Incident report created. Authorities notified.');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
@@ -661,14 +691,7 @@ class _SessionScreenState extends State<SessionScreen> {
             onPressed: () {
               // POST /api/consults
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Medical consultation request sent to licensed doctor',
-                  ),
-                  backgroundColor: Colors.blue,
-                ),
-              );
+              showSuccessSnackBar(context, 'Medical consultation request sent to licensed doctor');
             },
             child: const Text('Send Request'),
           ),

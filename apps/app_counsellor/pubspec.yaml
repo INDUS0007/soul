@@ -33,6 +33,7 @@ dependencies:
   common:
     path: ../../packages/common
   # Dependencies http, flutter_secure_storage, intl, shared_preferences are provided by common package
+  web_socket_channel: ^2.4.0
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
