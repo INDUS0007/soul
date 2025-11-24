@@ -436,12 +436,81 @@ if ($backendProcess -and !$backendProcess.HasExited) {
     Write-Host "Server should be available at http://127.0.0.1:$backendPort" -ForegroundColor Green
     Write-Host "WebSocket endpoint: ws://127.0.0.1:$backendPort/ws/chat/<chat_id>/" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Backend is running in background. Output redirected to:" -ForegroundColor Gray
-    Write-Host "  - Output: $script:backendOutputFile" -ForegroundColor Gray
-    Write-Host "  - Errors: $script:backendErrorFile" -ForegroundColor Gray
-    Write-Host "  - To view backend logs in real-time, open another terminal and run:" -ForegroundColor Gray
-    Write-Host "    Get-Content $script:backendOutputFile -Wait -Tail 20" -ForegroundColor Cyan
+    Write-Host "Backend logs will appear in this terminal below..." -ForegroundColor Green
+    Write-Host "----------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
+    
+    # Set up log tailing using runspace for real-time console output
+    # Wait a moment for log file to be created
+    Start-Sleep -Seconds 1
+    
+    # Create a runspace that outputs directly to console
+    $script:logTailRunspace = [runspacefactory]::CreateRunspace()
+    $script:logTailRunspace.ApartmentState = [System.Threading.ApartmentState]::STA
+    # ThreadOptions is not available in all PowerShell versions, so we skip it
+    # The runspace will work fine without it
+    $script:logTailRunspace.Open()
+    
+    $ps = [PowerShell]::Create()
+    $ps.Runspace = $script:logTailRunspace
+    
+    # Script that tails logs and writes directly to host
+    $tailScript = @"
+        `$outputFile = '$($script:backendOutputFile)'
+        `$errorFile = '$($script:backendErrorFile)'
+        `$lastSize = 0
+        `$lastErrorSize = 0
+        
+        while (`$true) {
+            # Check output file
+            if (Test-Path `$outputFile) {
+                try {
+                    `$file = Get-Item `$outputFile -ErrorAction SilentlyContinue
+                    if (`$file -and `$file.Length -gt `$lastSize) {
+                        `$stream = [System.IO.FileStream]::new(`$outputFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                        `$stream.Position = `$lastSize
+                        `$reader = New-Object System.IO.StreamReader(`$stream)
+                        while (`$null -ne (`$line = `$reader.ReadLine())) {
+                            if (`$line.Trim()) {
+                                [Console]::WriteLine("[BACKEND] `$line")
+                            }
+                        }
+                        `$lastSize = `$stream.Position
+                        `$reader.Close()
+                        `$stream.Close()
+                    }
+                } catch { }
+            }
+            
+            # Check error file
+            if (Test-Path `$errorFile) {
+                try {
+                    `$file = Get-Item `$errorFile -ErrorAction SilentlyContinue
+                    if (`$file -and `$file.Length -gt `$lastErrorSize) {
+                        `$stream = [System.IO.FileStream]::new(`$errorFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                        `$stream.Position = `$lastErrorSize
+                        `$reader = New-Object System.IO.StreamReader(`$stream)
+                        while (`$null -ne (`$line = `$reader.ReadLine())) {
+                            if (`$line.Trim()) {
+                                [Console]::ForegroundColor = [ConsoleColor]::Red
+                                [Console]::WriteLine("[BACKEND ERROR] `$line")
+                                [Console]::ResetColor()
+                            }
+                        }
+                        `$lastErrorSize = `$stream.Position
+                        `$reader.Close()
+                        `$stream.Close()
+                    }
+                } catch { }
+            }
+            
+            Start-Sleep -Milliseconds 300
+        }
+"@
+    
+    $ps.AddScript($tailScript) | Out-Null
+    $script:logTailHandle = $ps.BeginInvoke()
+    $script:logTailPowerShell = $ps
     
     # Store reference for cleanup
     $script:backendProcess = $backendProcess
@@ -503,17 +572,14 @@ if ($Device -eq 'windows') {
 Write-Host "[2/2] Launching Flutter User App..." -ForegroundColor Cyan
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
 Write-Host "All output will appear in this terminal:" -ForegroundColor Cyan
+Write-Host "  - Backend logs (prefixed with [BACKEND])" -ForegroundColor Yellow
 Write-Host "  - Flutter app output (below)" -ForegroundColor Yellow
-Write-Host "  - Backend is running in background" -ForegroundColor Yellow
 Write-Host "  - Press Ctrl+C to stop both" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Flutter Hot Reload Commands (IMPORTANT - They work now!):" -ForegroundColor Cyan
+Write-Host "Flutter Hot Reload Commands:" -ForegroundColor Cyan
 Write-Host "  - Press 'r' (lowercase) to hot reload (quick refresh)" -ForegroundColor Green
 Write-Host "  - Press 'R' (capital) to hot restart (full restart)" -ForegroundColor Green
 Write-Host "  - Press 'q' to quit the Flutter app" -ForegroundColor Green
-Write-Host ""
-Write-Host "Note: Backend output is redirected so Flutter interactive commands work properly." -ForegroundColor Gray
-Write-Host "      Backend logs are saved to temporary files (see cleanup message on exit)." -ForegroundColor Gray
 Write-Host ""
 Write-Host "Note: Chrome DevTools cleanup errors (SocketException) are harmless" -ForegroundColor Gray
 Write-Host "      and can be safely ignored. They don't affect app functionality." -ForegroundColor Gray
@@ -527,11 +593,14 @@ try {
         $flutterArgs += '--release'
     }
     
-    Write-Host "Starting Flutter app... Flutter hot reload commands (r, R, q) will work now." -ForegroundColor Cyan
+    Write-Host "Starting Flutter app..." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Backend logs will appear in real-time with [BACKEND] prefix." -ForegroundColor Green
+    Write-Host "Flutter output will appear below." -ForegroundColor Green
     Write-Host ""
     
     # Run Flutter directly - this blocks and shows output in this terminal
-    # Backend output is redirected, so Flutter's interactive commands (r, R, q) will work
+    # Backend logs are being displayed in real-time via the runspace (running in parallel)
     # Note: DevTools cleanup errors are harmless and can be ignored
     flutter @flutterArgs
 }
@@ -550,22 +619,36 @@ finally {
     Write-Host "----------------------------------------" -ForegroundColor DarkGray
     Write-Host "`nCleaning up..." -ForegroundColor Yellow
     
+    # Stop log tailing runspace
+    if ($script:logTailPowerShell) {
+        try {
+            $script:logTailPowerShell.Stop() | Out-Null
+            $script:logTailPowerShell.Dispose() | Out-Null
+        } catch { }
+    }
+    if ($script:logTailRunspace) {
+        try {
+            $script:logTailRunspace.Close() | Out-Null
+            $script:logTailRunspace.Dispose() | Out-Null
+        } catch { }
+    }
+    
     # Stop the backend process gracefully
     Write-Host "Stopping Django backend..." -ForegroundColor Yellow
-    if ($backendProcess -and !$backendProcess.HasExited) {
+    if ($script:backendProcess -and !$script:backendProcess.HasExited) {
         try {
-            $backendProcess.CloseMainWindow() | Out-Null
-            if (-not $backendProcess.HasExited) {
+            $script:backendProcess.CloseMainWindow() | Out-Null
+            if (-not $script:backendProcess.HasExited) {
                 Start-Sleep -Seconds 1
-                $backendProcess.Kill()
+                $script:backendProcess.Kill()
             }
         }
         catch {
-            if (-not $backendProcess.HasExited) {
-                $backendProcess.Kill()
+            if (-not $script:backendProcess.HasExited) {
+                $script:backendProcess.Kill()
             }
         }
-        $backendProcess.WaitForExit()
+        $script:backendProcess.WaitForExit()
     }
     
     # Show backend log locations before cleanup
@@ -584,4 +667,3 @@ finally {
 }
 
 Write-Host "All processes stopped." -ForegroundColor Green
-
