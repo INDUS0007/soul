@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 // Removed flutter_native_timezone plugin - using built-in Dart timezone support instead
 
 import 'package:common/api/api_client.dart';
@@ -3180,6 +3182,8 @@ class _ProfilePageState extends State<ProfilePage> {
   late TextEditingController _phoneCtrl;
   late TextEditingController _ageCtrl;
   String _gender = '';
+  File? _photo;
+  final ImagePicker _picker = ImagePicker(); 
 
   @override
   void initState() {
@@ -3208,6 +3212,63 @@ class _ProfilePageState extends State<ProfilePage> {
     _phoneCtrl.dispose();
     _ageCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final picked = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+      if (picked == null) return;
+      setState(() => _photo = File(picked.path));
+    } catch (e) {
+      if (mounted) showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Error'), content: Text('$e')));
+    }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+      if (picked == null) return;
+      setState(() => _photo = File(picked.path));
+    } catch (e) {
+      if (mounted) showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Error'), content: Text('$e')));
+    }
+  }
+
+  void _showPhotoOptions() {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Upload Photo', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImageFromCamera();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImageFromGallery();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   InputDecoration _inputDecoration(String label) {
@@ -3268,15 +3329,42 @@ class _ProfilePageState extends State<ProfilePage> {
         padding: const EdgeInsets.all(14),
         child: Column(
           children: [
-            CircleAvatar(
-              radius: 36,
-              backgroundColor: _Palette.primary,
-              child: Text(
-                displayName.isNotEmpty
-                    ? displayName[0].toUpperCase()
-                    : 'U',
-                style: const TextStyle(color: Colors.white, fontSize: 20),
-              ),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                CircleAvatar(
+                  radius: 36,
+                  backgroundColor: _Palette.primary,
+                  backgroundImage: _photo != null ? FileImage(_photo!) as ImageProvider : null,
+                  child: _photo == null
+                      ? Text(
+                          displayName.isNotEmpty
+                              ? displayName[0].toUpperCase()
+                              : 'U',
+                          style: const TextStyle(color: Colors.white, fontSize: 20),
+                        )
+                      : null,
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: InkWell(
+                    onTap: _showPhotoOptions,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 4),
+                        ],
+                      ),
+                      child: Icon(Icons.camera_alt, size: 18, color: _Palette.primary),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Text(

@@ -14,6 +14,7 @@ dependencies:
   # Removed flutter_native_timezone_updated_gradle - using built-in Dart timezone support instead
   path_provider_linux: ^2.2.1
   path_provider_windows: ^2.3.0
+  image_picker: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -24,5 +25,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/soul_support_logo.png
-    - assets/images/soul_support.jpg
 

@@ -36,7 +36,7 @@ class CounselorApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        cardTheme: CardTheme(elevation: 2),
+        cardTheme: CardThemeData(elevation: 2),
         // Mobile-optimized theme
         appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
         // Optimize touch targets for mobile

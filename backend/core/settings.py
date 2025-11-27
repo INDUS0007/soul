@@ -55,13 +55,22 @@ TEMPLATES = [
 WSGI_APPLICATION = "core.wsgi.application"
 ASGI_APPLICATION = "core.asgi.application"
 
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.sqlite3",
+#         "NAME": BASE_DIR / "db.sqlite3",
+#     }
+# }
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'ss_db',       # The database you created
+        'USER': 'postgres',        # PostgreSQL username
+        'PASSWORD': '12345',    # PostgreSQL password
+        'HOST': 'localhost',               # or your server IP
+        'PORT': '5432',                    # default PostgreSQL port
     }
 }
-
 AUTH_PASSWORD_VALIDATORS: list[dict[str, str]] = []
 
 LANGUAGE_CODE = "en-us"

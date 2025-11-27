@@ -18,7 +18,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // Step 0 controllers
   final _basicFormKey = GlobalKey<FormState>();
-  final _usernameCtrl = TextEditingController();
   final _firstCtrl = TextEditingController();
   final _middleCtrl = TextEditingController();
   final _lastCtrl = TextEditingController();
@@ -81,7 +80,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
-    _usernameCtrl.dispose();
+  // username field removed; no controller to dispose
     _firstCtrl.dispose();
     _middleCtrl.dispose();
     _lastCtrl.dispose();
@@ -96,11 +95,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   // Validators
-  String? _validateUsername(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Choose a username';
-    if (value.trim().length < 3) return 'Username too short';
-    return null;
-  }
+  // Username is auto-generated from email; manual validation not required
 
   String? _validateFirst(String? value) {
     if (value == null || value.trim().isEmpty) return 'Enter first name';
@@ -146,7 +141,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (value == null || value.isEmpty) return 'Enter a password';
     if (value.length < 8) return 'Use at least 8 characters';
     if (!RegExp(r'[A-Z]').hasMatch(value))
-      return 'Add at least 1 uppercase letter';
+    return 'Add at least 1 uppercase letter';
     if (!RegExp(r'[0-9]').hasMatch(value)) return 'Add at least 1 number';
     return null;
   }
@@ -248,7 +243,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    final username = _usernameCtrl.text.trim();
+    // Auto-generate a username from the email local-part (sanitize and ensure min length)
+    String username;
+    final emailLocal = _emailCtrl.text.trim().isNotEmpty
+        ? _emailCtrl.text.trim().split('@').first
+        : '';
+    if (emailLocal.isNotEmpty) {
+      username = emailLocal.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '');
+      if (username.length < 3) {
+        username = username + (DateTime.now().millisecondsSinceEpoch % 1000).toString();
+      }
+    } else {
+      // fallback to nickname or timestamp
+      username = _nicknameCtrl.text.trim().isNotEmpty
+          ? _nicknameCtrl.text.trim().replaceAll(RegExp(r'[^A-Za-z0-9_]'), '')
+          : 'user${DateTime.now().millisecondsSinceEpoch % 100000}';
+    }
     final fullNameParts = [
       _firstCtrl.text.trim(),
       if (_middleCtrl.text.trim().isNotEmpty) _middleCtrl.text.trim(),
@@ -295,6 +305,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       labelText: label,
       prefixIcon: prefix != null ? Icon(prefix) : null,
       suffixIcon: suffix,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       border: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(25)),
       ),
@@ -310,13 +322,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         key: _basicFormKey,
         child: Column(
           children: [
-            TextFormField(
-              controller: _usernameCtrl,
-              textInputAction: TextInputAction.next,
-              decoration: _fieldDecoration(
-                  label: 'Username', prefix: Icons.account_circle_outlined),
-              validator: _validateUsername,
-            ),
+            // Username removed - it will be auto-generated from the email
             const SizedBox(height: 12),
             TextFormField(
               controller: _nicknameCtrl,
@@ -643,7 +649,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     )
                   : const Icon(Icons.check_circle_outline),
               label:
-                  Text(_registering ? 'Creating account…' : 'Create account'),
+                  Text(_registering ? 'Creating accountâ€¦' : 'Create account'),
             ),
           ],
         ),

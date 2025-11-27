@@ -194,6 +194,7 @@ class _WalletPageState extends State<WalletPage> {
       child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Card(
@@ -289,7 +290,6 @@ class _WalletPageState extends State<WalletPage> {
             },
           ),
           const SizedBox(height: 24),
-          const Spacer(),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
@@ -316,5 +316,3 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 }
-
-
