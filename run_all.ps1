@@ -44,7 +44,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $backendPath = Join-Path $projectRoot 'backend'
 $flutterPath = Join-Path $projectRoot 'apps\app_user'
-$pythonExe = Join-Path $projectRoot '.venv\Scripts\python.exe'
+$pythonExe = Join-Path $projectRoot 'venv\Scripts\python.exe'
 
 if (!(Test-Path $pythonExe)) {
     $fallbackPythonExe = Join-Path $backendPath 'venv\Scripts\python.exe'

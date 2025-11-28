@@ -1679,19 +1679,19 @@ class WellnessExtras extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: ElevatedButton.icon(
-                      onPressed: () => onOpenFeature('Recharge Room'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.play_arrow, color: Colors.white),
-                      label: const Text('Start Session'),
-                    ),
-                  ),
+                  // const SizedBox(height: 14),
+                  // Align(
+                  //   alignment: Alignment.centerRight,
+                  //   child: ElevatedButton.icon(
+                  //     onPressed: () => onOpenFeature('Recharge Room'),
+                  //     style: ElevatedButton.styleFrom(
+                  //       backgroundColor: Colors.blue,
+                  //       foregroundColor: Colors.white,
+                  //     ),
+                  //     icon: const Icon(Icons.play_arrow, color: Colors.white),
+                  //     label: const Text('Start Session'),
+                  //   ),
+                  // ),
                 ],
               ),
             ),

@@ -97,6 +97,9 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    # When True, Simple JWT will call Django's update_last_login()
+    # so `auth_user.last_login` is updated when a token is issued.
+    "UPDATE_LAST_LOGIN": True,
 }
 
 CORS_ALLOW_ALL_ORIGINS = True

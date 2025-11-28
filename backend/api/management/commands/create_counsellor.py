@@ -230,6 +230,23 @@ class Command(BaseCommand):
                 bio=bio,
                 is_available=True
             )
+             
+
+            # user = User.objects.create_user(
+            # username="counsellor_admin",
+            # password="Counsellor@123",
+            # email="counsellor@example.com",
+            # is_active=True
+            # )
+
+#             CounsellorProfile.objects.create(
+#     user=user,
+#     full_name="Permanent Counselor",
+#     is_active=True
+# )
+
+#             print("Permanent counselor created.")
+
             
             self.stdout.write(
                 self.style.SUCCESS(
