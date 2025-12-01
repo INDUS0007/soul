@@ -664,7 +664,8 @@ class RegisterSerializer(serializers.ModelSerializer):
                 setattr(profile, attr, value)
         profile.save()
 
-        otp_instance.delete()
+        # otp_instance.delete()
+        otp_instance.mark_used()
         return user
 
 
