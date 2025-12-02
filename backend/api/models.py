@@ -468,21 +468,21 @@
 #                 # Double-check that started_at is set (it should have been saved above)
 #                 if not self.started_at:
 #                     logger.warning(
-#                         f"⚠️ Chat {self.id} ended but started_at is None after refresh. "
+#                         f"âš ï¸ Chat {self.id} ended but started_at is None after refresh. "
 #                         f"This may prevent billing. Old status was {old_status}, new status is {self.status}."
 #                     )
                 
 #                 # Calculate billing and deduct from wallet
 #                 success = calculate_and_deduct_chat_billing(self)
 #                 if success:
-#                     logger.info(f"✅ Billing processed successfully for chat {self.id}")
+#                     logger.info(f"âœ… Billing processed successfully for chat {self.id}")
 #                 else:
 #                     logger.error(
-#                         f"❌ Billing processing failed for chat {self.id}. "
+#                         f"âŒ Billing processing failed for chat {self.id}. "
 #                         f"This may be due to insufficient wallet balance or an error during deduction."
 #                     )
 #             except Exception as e:
-#                 logger.error(f"❌ Error processing billing for chat {self.id}: {e}", exc_info=True)
+#                 logger.error(f"âŒ Error processing billing for chat {self.id}: {e}", exc_info=True)
 #             finally:
 #                 # Clear flag
 #                 self._billing_processing = False
@@ -1080,7 +1080,7 @@
 #         verbose_name_plural = "Wellness Tasks"
 
 #     def __str__(self) -> str:
-#         return f"{self.user.username} • {self.title}"
+#         return f"{self.user.username} â€¢ {self.title}"
     
 #     def save(self, *args, **kwargs):
 #         """Ensure task is always saved with timestamps."""
@@ -1140,7 +1140,7 @@
 #         verbose_name_plural = "Wellness Journal Entries"
 
 #     def __str__(self) -> str:
-#         return f"{self.user.username} • {self.title}"
+#         return f"{self.user.username} â€¢ {self.title}"
     
 #     def save(self, *args, **kwargs):
 #         """Ensure journal entry is always saved with timestamps."""
@@ -1320,7 +1320,7 @@
 #         verbose_name_plural = "Guidance Resources"
 
 #     def __str__(self) -> str:
-#         return f"{self.get_resource_type_display()} • {self.title}"
+#         return f"{self.get_resource_type_display()} â€¢ {self.title}"
 
 
 # class MusicTrack(models.Model):
@@ -1593,6 +1593,15 @@
 #         blank=True,
 #         help_text="When OTP was verified"
 #     )
+#     is_used = models.BooleanField(
+#         default=False,
+#         help_text="Whether OTP was used for registration"
+#     )
+#     used_at = models.DateTimeField(
+#         null=True,
+#         blank=True,
+#         help_text="When OTP was used"
+#     )
 
 #     class Meta:
 #         indexes = [
@@ -1616,6 +1625,13 @@
 #         self.is_verified = True
 #         self.verified_at = timezone.now()
 #         self.save(update_fields=["is_verified", "verified_at"])
+
+#     def mark_used(self):
+#         """Mark OTP as used (after successful registration)."""
+#         self.is_used = True
+#         self.used_at = timezone.now()
+#         self.save(update_fields=["is_used", "used_at"])
+
 
 
 
@@ -2093,21 +2109,21 @@ class Chat(models.Model):
                 # Double-check that started_at is set (it should have been saved above)
                 if not self.started_at:
                     logger.warning(
-                        f"âš ï¸ Chat {self.id} ended but started_at is None after refresh. "
+                        f"Ã¢Å¡ Ã¯Â¸Â Chat {self.id} ended but started_at is None after refresh. "
                         f"This may prevent billing. Old status was {old_status}, new status is {self.status}."
                     )
                 
                 # Calculate billing and deduct from wallet
                 success = calculate_and_deduct_chat_billing(self)
                 if success:
-                    logger.info(f"âœ… Billing processed successfully for chat {self.id}")
+                    logger.info(f"Ã¢Å“â€¦ Billing processed successfully for chat {self.id}")
                 else:
                     logger.error(
-                        f"âŒ Billing processing failed for chat {self.id}. "
+                        f"Ã¢ÂÅ’ Billing processing failed for chat {self.id}. "
                         f"This may be due to insufficient wallet balance or an error during deduction."
                     )
             except Exception as e:
-                logger.error(f"âŒ Error processing billing for chat {self.id}: {e}", exc_info=True)
+                logger.error(f"Ã¢ÂÅ’ Error processing billing for chat {self.id}: {e}", exc_info=True)
             finally:
                 # Clear flag
                 self._billing_processing = False
@@ -2705,7 +2721,7 @@ class WellnessTask(models.Model):
         verbose_name_plural = "Wellness Tasks"
 
     def __str__(self) -> str:
-        return f"{self.user.username} â€¢ {self.title}"
+        return f"{self.user.username} Ã¢â‚¬Â¢ {self.title}"
     
     def save(self, *args, **kwargs):
         """Ensure task is always saved with timestamps."""
@@ -2765,7 +2781,7 @@ class WellnessJournalEntry(models.Model):
         verbose_name_plural = "Wellness Journal Entries"
 
     def __str__(self) -> str:
-        return f"{self.user.username} â€¢ {self.title}"
+        return f"{self.user.username} Ã¢â‚¬Â¢ {self.title}"
     
     def save(self, *args, **kwargs):
         """Ensure journal entry is always saved with timestamps."""
@@ -2945,7 +2961,7 @@ class GuidanceResource(models.Model):
         verbose_name_plural = "Guidance Resources"
 
     def __str__(self) -> str:
-        return f"{self.get_resource_type_display()} â€¢ {self.title}"
+        return f"{self.get_resource_type_display()} Ã¢â‚¬Â¢ {self.title}"
 
 
 class MusicTrack(models.Model):

@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:common/widgets/widgets.dart';
+import 'package:common/api/api_client.dart';
 import '../models/counselor.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -15,11 +19,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _bioController;
   late TextEditingController _specializationController;
+  late TextEditingController _nameController;
   List<String> _certifications = [];
 
   @override
   void initState() {
     super.initState();
+    _nameController = TextEditingController(text: widget.counselor.name);
     _bioController = TextEditingController(text: widget.counselor.bio);
     _specializationController = TextEditingController(
       text: widget.counselor.specialization,
@@ -31,6 +37,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void dispose() {
     _bioController.dispose();
     _specializationController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -406,11 +413,70 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  void _saveProfile() {
+  void _saveProfile() async {
     if (_formKey.currentState?.validate() ?? false) {
-      // POST /api/providers/{id}/profile
-      showSuccessSnackBar(context, 'Profile updated successfully');
-      Navigator.pop(context);
+      try {
+        // Prepare the payload for the backend API
+        final updateData = {
+          'bio': _bioController.text,
+          'specialization': _specializationController.text,
+        };
+
+        // Get stored access token from secure storage
+        const storage = FlutterSecureStorage();
+        final access = await storage.read(key: 'access');
+        
+        if (access == null) {
+          if (mounted) {
+            showErrorSnackBar(context, 'Authentication required. Please login first.');
+          }
+          return;
+        }
+
+        // Call PATCH /api/counselor/profile/ with authorization
+        final response = await http.patch(
+          Uri.parse('${ApiClient.base}/counselor/profile/'),
+          headers: {
+            'Authorization': 'Bearer $access',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(updateData),
+        );
+
+        if (response.statusCode == 200) {
+          if (mounted) {
+            showSuccessSnackBar(context, 'Profile updated successfully! ✅');
+            Navigator.pop(context, true);
+          }
+        } else {
+          if (mounted) {
+            final errorMsg = _extractErrorMessage(response);
+            showErrorSnackBar(context, 'Failed to update profile: $errorMsg');
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          showErrorSnackBar(context, 'Error updating profile: $e');
+        }
+      }
     }
+  }
+
+  String _extractErrorMessage(http.Response response) {
+    if (response.body.isEmpty) {
+      return 'Request failed with status ${response.statusCode}';
+    }
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        if (decoded['detail'] != null) {
+          return decoded['detail'].toString();
+        }
+        if (decoded.values.isNotEmpty) {
+          return decoded.values.first.toString();
+        }
+      }
+    } catch (_) {}
+    return response.body;
   }
 }

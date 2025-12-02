@@ -117,10 +117,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
+  // 
   String? _validatePhone(String? value) {
     if (value == null || value.trim().isEmpty) return 'Enter phone number';
     final cleaned = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (cleaned.length < 6) return 'Enter a valid phone number';
+    
+    // Check for non-digit characters in the *raw* input (before cleaning)
+    // NOTE: If you need to allow dashes or spaces, adjust the regex [^0-9\-\s]
+    if (RegExp(r'[a-zA-Z]').hasMatch(value)) {
+      return 'Enter only numbers (0-9) in the phone field.'; // <--- NEW ERROR MESSAGE
+    }
+
+    if (cleaned.length < 10) return 'Enter a valid phone number';
     return null;
   }
 
@@ -425,14 +433,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onChanged: (value) =>
                       setState(() => _selectedDial = value ?? _selectedDial),
                 );
+                // final phoneField = TextFormField(
+                //   controller: _phoneCtrl,
+                //   keyboardType: TextInputType.phone,
+                //   textInputAction: TextInputAction.next,
+                //   decoration: _fieldDecoration(
+                //       label: 'Phone number', prefix: Icons.phone_outlined),
+                //   validator: _validatePhone,
+                // );
                 final phoneField = TextFormField(
                   controller: _phoneCtrl,
-                  keyboardType: TextInputType.phone,
+                  keyboardType: TextInputType.phone, // Suggests a numeric keyboard
                   textInputAction: TextInputAction.next,
+                  
+                  // *** ADDED INPUT FORMATTER ***
+                  // inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  // ******************************
+                  
                   decoration: _fieldDecoration(
                       label: 'Phone number', prefix: Icons.phone_outlined),
                   validator: _validatePhone,
                 );
+                // ---
 
                 if (vertical) {
                   return Column(

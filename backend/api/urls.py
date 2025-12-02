@@ -1,3 +1,114 @@
+# from django.urls import path
+# # TokenRefreshView is now imported from views
+
+# from .views import (
+#     ChatAcceptView,
+#     ChatCreateView,
+#     ChatListView,
+#     ChatMessageListView,
+#     CounsellorAppointmentsView,
+#     CounsellorProfileView,
+#     CounsellorStatsView,
+#     DashboardView,
+#     EmailOrUsernameTokenObtainPairView,
+#     LegacyAdvancedCareSupportView,
+#     LegacyAffirmationsView,
+#     LegacyAssessmentView,
+#     LegacyBreathingView,
+#     LegacyExpertConnectView,
+#     LegacyFeatureDetailView,
+#     LegacyGuidelinesView,
+#     MeditationSessionListView,
+#     MindCareBoosterListView,
+#     MoodUpdateView,
+#     MusicTrackListView,
+#     ProfessionalGuidanceListView,
+#     ProfileView,
+#     QueuedChatsView,
+#     QuickSessionView,
+#     RegisterView,
+#     RegistrationSendOTPView,
+#     PasswordResetSendOTPView,
+#     RegistrationVerifyOTPView,
+#     PasswordResetVerifyOTPView,
+#     PasswordResetConfirmView,
+#     ReportsAnalyticsView,
+#     SessionDurationView,
+#     SessionEndView,
+#     SessionStartView,
+#     SessionSummaryView,
+#     SessionUpdateView,
+#     SupportGroupListView,
+#     TokenRefreshView,
+#     UpcomingSessionDetailView,
+#     UpcomingSessionListCreateView,
+#     UserSettingsView,
+#     WalletDetailView,
+#     WalletRechargeView,
+#     WalletUsageView,
+#     WellnessJournalEntryDetailView,
+#     WellnessJournalEntryListCreateView,
+#     WellnessTaskDetailView,
+#     WellnessTaskListCreateView,
+# )
+
+# urlpatterns = [
+#     path("auth/register/", RegisterView.as_view()),
+#     path("auth/send-otp/", RegistrationSendOTPView.as_view()),
+#     path("auth/verify-otp/", RegistrationVerifyOTPView.as_view()),
+#     path("auth/token/", EmailOrUsernameTokenObtainPairView.as_view()),
+#     path("auth/token/refresh/", TokenRefreshView.as_view()),
+#     path("profile/", ProfileView.as_view()),
+#     path("settings/", UserSettingsView.as_view()),
+#     path("dashboard/", DashboardView.as_view()),
+#     path("mood/", MoodUpdateView.as_view()),
+#     path("wallet/", WalletDetailView.as_view()),
+#     path("wallet/recharge/", WalletRechargeView.as_view()),
+#     path("wallet/use/", WalletUsageView.as_view()),
+#     path("wellness/tasks/", WellnessTaskListCreateView.as_view()),
+#     path("wellness/tasks/<int:task_id>/", WellnessTaskDetailView.as_view()),
+#     path("wellness/journals/", WellnessJournalEntryListCreateView.as_view()),
+#     path("wellness/journals/<int:entry_id>/", WellnessJournalEntryDetailView.as_view()),
+#     path("support-groups/", SupportGroupListView.as_view()),
+#     path("sessions/", UpcomingSessionListCreateView.as_view()),
+#     path("sessions/<int:session_id>/", UpcomingSessionDetailView.as_view()),
+#     path("sessions/<int:session_id>/start/", SessionStartView.as_view()),
+#     path("sessions/<int:session_id>/end/", SessionEndView.as_view()),
+#     path("sessions/<int:session_id>/duration/", SessionDurationView.as_view()),
+#     path("sessions/<int:session_id>/update/", SessionUpdateView.as_view()),
+#     path("sessions/<int:session_id>/summary/", SessionSummaryView.as_view()),
+#     path("sessions/quick/", QuickSessionView.as_view()),
+#     path("reports/analytics/", ReportsAnalyticsView.as_view()),
+#     path("guidance/resources/", ProfessionalGuidanceListView.as_view()),
+#     path("content/music/", MusicTrackListView.as_view()),
+#     path("content/boosters/", MindCareBoosterListView.as_view()),
+#     path("content/meditations/", MeditationSessionListView.as_view()),
+#     path("legacy/guidelines/", LegacyGuidelinesView.as_view()),
+#     path("legacy/expert-connect/", LegacyExpertConnectView.as_view()),
+#     path("legacy/breathing/", LegacyBreathingView.as_view()),
+#     path("legacy/assessment/", LegacyAssessmentView.as_view()),
+#     path("legacy/affirmations/", LegacyAffirmationsView.as_view()),
+#     path("legacy/advanced-care/", LegacyAdvancedCareSupportView.as_view()),
+#     path("legacy/feature-detail/", LegacyFeatureDetailView.as_view()),
+#     # Counselor endpoints
+#     path("counselor/profile/", CounsellorProfileView.as_view()),
+#     path("counselor/appointments/", CounsellorAppointmentsView.as_view()),
+#     path("counselor/stats/", CounsellorStatsView.as_view()),
+#     path("counselor/queued-chats/", QueuedChatsView.as_view()),
+#     # Chat endpoints
+#     path("chats/", ChatCreateView.as_view()),
+#     path("chats/list/", ChatListView.as_view()),
+#     path("chats/<int:chat_id>/accept/", ChatAcceptView.as_view()),
+#     path("chats/<int:chat_id>/messages/", ChatMessageListView.as_view()),
+# ]
+
+
+
+
+
+
+
+
 from django.urls import path
 # TokenRefreshView is now imported from views
 
@@ -28,7 +139,10 @@ from .views import (
     QuickSessionView,
     RegisterView,
     RegistrationSendOTPView,
+    PasswordResetSendOTPView,
     RegistrationVerifyOTPView,
+    PasswordResetVerifyOTPView,
+    PasswordResetConfirmView,
     ReportsAnalyticsView,
     SessionDurationView,
     SessionEndView,
@@ -52,7 +166,10 @@ from .views import (
 urlpatterns = [
     path("auth/register/", RegisterView.as_view()),
     path("auth/send-otp/", RegistrationSendOTPView.as_view()),
+    path("auth/send-password-reset-otp/", PasswordResetSendOTPView.as_view()),
     path("auth/verify-otp/", RegistrationVerifyOTPView.as_view()),
+    path("auth/verify-password-reset-otp/", PasswordResetVerifyOTPView.as_view()),
+    path("auth/password-reset/", PasswordResetConfirmView.as_view()),
     path("auth/token/", EmailOrUsernameTokenObtainPairView.as_view()),
     path("auth/token/refresh/", TokenRefreshView.as_view()),
     path("profile/", ProfileView.as_view()),
@@ -98,4 +215,3 @@ urlpatterns = [
     path("chats/<int:chat_id>/accept/", ChatAcceptView.as_view()),
     path("chats/<int:chat_id>/messages/", ChatMessageListView.as_view()),
 ]
-
