@@ -2508,6 +2508,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class ApiClientException implements Exception {
@@ -4119,6 +4120,57 @@ class ApiClient {
 
     throw ApiClientException(
       'Unable to delete journal entry: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Fetch user's journal entries from MyJournal API
+  Future<List<Map<String, dynamic>>> fetchMyJournalEntries() async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/wellness/journals/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final entries = decoded['entries'] as List<dynamic>? ?? [];
+      return entries
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
+
+    throw ApiClientException(
+      'Unable to fetch journal entries: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Create a journal entry with custom fields
+  Future<Map<String, dynamic>> createMyJournalEntry({
+    required String entry,
+    String? emoji,
+    required DateTime date,
+    required String writeSomething,
+  }) async {
+    final response = await _sendAuthorized(
+      (access) => http.post(
+        Uri.parse('$base/wellness/journals/'),
+        headers: _headers(access, {'Content-Type': 'application/json'}),
+        body: jsonEncode({
+          'entry': entry,
+          'emoji': emoji ?? '',
+          'date': DateFormat('yyyy-MM-dd').format(date),
+          'write_something': writeSomething,
+        }),
+      ),
+    );
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to save journal entry: ${_extractErrorMessage(response)}',
     );
   }
 

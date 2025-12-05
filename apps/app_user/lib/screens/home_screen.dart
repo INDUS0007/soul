@@ -29,6 +29,7 @@ import 'support_groups_page.dart';
 import 'upcoming_sessions_page.dart';
 import 'wallet_page.dart';
 import 'wellness_journal_page.dart';
+import 'journal_page.dart';
 import 'wellness_plan_page.dart';
 import 'professional_guidance_page.dart';
 import 'reports_analytics_page.dart';
@@ -404,10 +405,10 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       return;
     }
-    if (normalized.contains('journal')) {
+    if (normalized.contains('my journal') || normalized.contains('journal')) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const WellnessJournalPage()),
+        MaterialPageRoute(builder: (_) => const MyJournalPage()),
       );
       return;
     }

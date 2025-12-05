@@ -18,7 +18,7 @@ from .models import (
     SupportGroupMembership,
     UpcomingSession,
     UserProfile,
-    WellnessJournalEntry,
+    MyJournal,
     WellnessTask,
 )
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -211,25 +211,29 @@ class WellnessTaskSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
 
-class WellnessJournalEntrySerializer(serializers.ModelSerializer):
-    formatted_date = serializers.SerializerMethodField()
+class MyJournalSerializer(serializers.ModelSerializer):
+    """Serializer for the simple MyJournal model used by the My Journal UI."""
 
     class Meta:
-        model = WellnessJournalEntry
+        model = MyJournal
         fields = (
             "id",
-            "title",
-            "note",
-            "mood",
-            "entry_type",
+            "user",
+            "entry",
+            "emoji",
+            "date",
+            "write_something",
             "created_at",
-            "formatted_date",
+            "updated_at",
         )
-        read_only_fields = ("id", "created_at", "formatted_date")
+        read_only_fields = ("id", "user", "created_at", "updated_at")
 
-    def get_formatted_date(self, obj: WellnessJournalEntry) -> str:
-        local_dt = timezone.localtime(obj.created_at)
-        return local_dt.strftime("%d %b %Y Ã¢â‚¬Â¢ %I:%M %p")
+    def create(self, validated_data):
+        # Attach the current user from the request context
+        request = self.context.get("request")
+        if request and hasattr(request, "user"):
+            validated_data["user"] = request.user
+        return super().create(validated_data)
 
 
 class SupportGroupSerializer(serializers.ModelSerializer):

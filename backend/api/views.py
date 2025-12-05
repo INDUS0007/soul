@@ -30,7 +30,7 @@ from .models import (
     SupportGroupMembership,
     UpcomingSession,
     UserProfile,
-    WellnessJournalEntry,
+    MyJournal,
     WellnessTask,
 )
 from .serializers import (
@@ -59,7 +59,7 @@ from .serializers import (
     VerifyOTPSerializer,
     WalletRechargeSerializer,
     WalletUsageSerializer,
-    WellnessJournalEntrySerializer,
+   MyJournalSerializer,
     WellnessTaskSerializer,
 )
 from .serializers import EmailOrUsernameTokenObtainPairSerializer
@@ -1434,12 +1434,13 @@ class QuickSessionView(APIView):
         )
 
 
-class WellnessJournalEntryListCreateView(generics.ListCreateAPIView):
-    serializer_class = WellnessJournalEntrySerializer
+class MyJournalListCreateView(generics.ListCreateAPIView):
+    """List and create simple MyJournal entries for the authenticated user."""
+    serializer_class = MyJournalSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return WellnessJournalEntry.objects.filter(user=self.request.user).order_by("-created_at", "-id")
+        return MyJournal.objects.filter(user=self.request.user).order_by("-date", "-created_at")
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -1450,13 +1451,16 @@ class WellnessJournalEntryListCreateView(generics.ListCreateAPIView):
         serializer.save(user=self.request.user)
 
 
-class WellnessJournalEntryDetailView(generics.RetrieveDestroyAPIView):
-    serializer_class = WellnessJournalEntrySerializer
+class MyJournalDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MyJournalSerializer
     permission_classes = [permissions.IsAuthenticated]
-    lookup_url_kwarg = "entry_id"
+    lookup_field = "pk"
 
     def get_queryset(self):
-        return WellnessJournalEntry.objects.filter(user=self.request.user)
+        return MyJournal.objects.filter(user=self.request.user)
+
+
+
 
 
 class RegistrationSendOTPView(APIView):

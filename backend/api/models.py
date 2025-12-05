@@ -1087,65 +1087,42 @@ class WellnessTask(models.Model):
         super().save(*args, **kwargs)
 
 
-class WellnessJournalEntry(models.Model):
-    """Journal entries for user wellness tracking."""
-    ENTRY_TYPE_3_DAY = "3-Day Journal"
-    ENTRY_TYPE_WEEKLY = "Weekly Journal"
-    ENTRY_TYPE_CUSTOM = "Custom"
-    
-    ENTRY_TYPE_CHOICES = [
-        (ENTRY_TYPE_3_DAY, "3-Day Journal"),
-        (ENTRY_TYPE_WEEKLY, "Weekly Journal"),
-        (ENTRY_TYPE_CUSTOM, "Custom"),
-    ]
+class MyJournal(models.Model):
+    """Simple journal entries used by the 'My Journal' UI.
 
+    Columns requested by the user:
+      - entry: short title or subject of the entry
+      - emoji: small emoji/label representing mood
+      - date: date chosen by the user for the entry
+      - write_something: the main text/body of the entry
+    """
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="wellness_journal_entries",
-        help_text="User who owns this journal entry"
+        related_name="my_journal_entries",
+        help_text="Owner of the journal entry",
     )
-    title = models.CharField(
-        max_length=160,
-        help_text="Entry title"
-    )
-    note = models.TextField(
-        help_text="Journal entry content"
-    )
-    mood = models.CharField(
-        max_length=16,
-        help_text="Mood at time of entry"
-    )
-    entry_type = models.CharField(
-        max_length=40,
-        choices=ENTRY_TYPE_CHOICES,
-        help_text="Type of journal entry"
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When entry was created"
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When entry was last updated"
-    )
+    entry = models.CharField(max_length=200, help_text="Entry title")
+    emoji = models.CharField(max_length=32, blank=True, help_text="Emoji or short label")
+    date = models.DateField(help_text="Entry date")
+    write_something = models.TextField(help_text="Journal content")
+
+    created_at = models.DateTimeField(auto_now_add=True, help_text="When entry was created")
+    updated_at = models.DateTimeField(auto_now=True, help_text="When entry was last updated")
 
     class Meta:
-        ordering = ("-created_at", "-id")
-        indexes = [
-            models.Index(fields=["user", "-created_at"]),
-            models.Index(fields=["user", "entry_type", "-created_at"]),
-        ]
-        verbose_name = "Wellness Journal Entry"
-        verbose_name_plural = "Wellness Journal Entries"
+        ordering = ("-date", "-created_at")
+        verbose_name = "My Journal Entry"
+        verbose_name_plural = "My Journal Entries"
 
     def __str__(self) -> str:
-        return f"{self.user.username} Ã¢â‚¬Â¢ {self.title}"
-    
-    def save(self, *args, **kwargs):
-        """Ensure journal entry is always saved with timestamps."""
-        super().save(*args, **kwargs)
+        return f"{self.user.username} • {self.entry} ({self.date.isoformat()})"
 
+    def save(self, *args, **kwargs):
+        # Basic normalization: ensure entry is trimmed
+        if isinstance(self.entry, str):
+            self.entry = self.entry.strip()
+        super().save(*args, **kwargs)
 
 class MoodLog(models.Model):
     """Log of user mood updates."""
