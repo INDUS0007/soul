@@ -4174,6 +4174,88 @@ class ApiClient {
     );
   }
 
+  /// Save a breathing session to the database
+  Future<Map<String, dynamic>> saveBreathingSession({
+    required String technique,
+    required int durationSeconds,
+    required int cyclesCompleted,
+    required int inhaleSeconds,
+    required int exhaleSeconds,
+    int holdSeconds = 0,
+    String? moodBefore,
+    String? moodAfter,
+    String? notes,
+    bool completed = true,
+  }) async {
+    final response = await _sendAuthorized(
+      (access) => http.post(
+        Uri.parse('$base/breathing/sessions/'),
+        headers: _headers(access, {'Content-Type': 'application/json'}),
+        body: jsonEncode({
+          'technique': technique,
+          'duration_seconds': durationSeconds,
+          'cycles_completed': cyclesCompleted,
+          'inhale_seconds': inhaleSeconds,
+          'hold_seconds': holdSeconds,
+          'exhale_seconds': exhaleSeconds,
+          if (moodBefore != null) 'mood_before': moodBefore,
+          if (moodAfter != null) 'mood_after': moodAfter,
+          if (notes != null) 'notes': notes,
+          'completed': completed,
+        }),
+      ),
+    );
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to save breathing session: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Get user's breathing session history
+  Future<Map<String, dynamic>> getBreathingSessions() async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/breathing/sessions/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to fetch breathing sessions: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Get all affirmations
+  Future<Map<String, dynamic>> getAffirmations({String? category}) async {
+    var url = '$base/affirmations/';
+    if (category != null && category.isNotEmpty) {
+      url += '?category=$category';
+    }
+    
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse(url),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiClientException(
+      'Unable to fetch affirmations: ${_extractErrorMessage(response)}',
+    );
+  }
+
   Future<WalletInfo> getWallet() async {
     final response = await _sendAuthorized(
       (access) => http.get(

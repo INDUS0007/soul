@@ -22,6 +22,7 @@ from .models import (
     CounsellorProfile,
     EmailOTP,
     GuidanceResource,
+    Affirmation,
     MeditationSession,
     MindCareBooster,
     MoodLog,
@@ -32,6 +33,7 @@ from .models import (
     UserProfile,
     MyJournal,
     WellnessTask,
+    BreathingSession,
 )
 from .serializers import (
     AssessmentCreateSerializer,
@@ -59,8 +61,12 @@ from .serializers import (
     VerifyOTPSerializer,
     WalletRechargeSerializer,
     WalletUsageSerializer,
-   MyJournalSerializer,
+    MyJournalSerializer,
     WellnessTaskSerializer,
+    BreathingSessionSerializer,
+    BreathingSessionCreateSerializer,
+    AffirmationSerializer,
+    AffirmationCreateSerializer,
 )
 from .serializers import EmailOrUsernameTokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView as BaseTokenRefreshView
@@ -407,9 +413,71 @@ class LegacyBreathingView(APIView):
         return Response(
             {
                 "cycle_options": [4, 5, 6, 8, 10],
-                "tip": "For calm, try 6Ã¢â‚¬â€œ8 second cycles. If you feel lightheaded stop and return to normal breathing.",
+                "tip": "For calm, try 6–8 second cycles. If you feel lightheaded stop and return to normal breathing.",
             }
         )
+
+
+class BreathingSessionListCreateView(generics.ListCreateAPIView):
+    """
+    List user's breathing sessions and create new ones.
+    
+    GET /api/breathing/sessions/ - List all breathing sessions for the user
+    POST /api/breathing/sessions/ - Create a new breathing session
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return BreathingSessionCreateSerializer
+        return BreathingSessionSerializer
+    
+    def get_queryset(self):
+        return BreathingSession.objects.filter(user=self.request.user).order_by('-created_at')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = BreathingSessionSerializer(queryset, many=True)
+        
+        # Calculate stats
+        total_sessions = queryset.count()
+        total_duration = sum(s.duration_seconds for s in queryset)
+        total_cycles = sum(s.cycles_completed for s in queryset)
+        
+        return Response({
+            "sessions": serializer.data,
+            "stats": {
+                "total_sessions": total_sessions,
+                "total_duration_seconds": total_duration,
+                "total_duration_minutes": round(total_duration / 60, 1),
+                "total_cycles": total_cycles,
+            }
+        })
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session = serializer.save()
+        
+        # Return the created session with full details
+        return Response(
+            BreathingSessionSerializer(session).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class BreathingSessionDetailView(generics.RetrieveDestroyAPIView):
+    """
+    Retrieve or delete a specific breathing session.
+    
+    GET /api/breathing/sessions/<id>/ - Get session details
+    DELETE /api/breathing/sessions/<id>/ - Delete a session
+    """
+    serializer_class = BreathingSessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return BreathingSession.objects.filter(user=self.request.user)
 
 
 class LegacyAssessmentView(APIView):
@@ -420,9 +488,17 @@ class LegacyAssessmentView(APIView):
 
 
 class LegacyAffirmationsView(APIView):
+    """Legacy view - now redirects to new affirmations endpoint."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        # Use the new Affirmation model if data exists, else fallback
+        affirmations = Affirmation.objects.filter(is_active=True).order_by('order', '-created_at')
+        if affirmations.exists():
+            return Response({
+                "affirmations": [a.text for a in affirmations]
+            })
+        # Fallback for backwards compatibility
         return Response(
             {
                 "affirmations": [
@@ -433,6 +509,129 @@ class LegacyAffirmationsView(APIView):
                 ]
             }
         )
+
+
+class AffirmationListView(generics.ListAPIView):
+    """
+    List all active affirmations.
+    Users can browse one at a time with arrows in the frontend.
+    
+    GET /api/affirmations/
+    Returns: { affirmations: [...], total: count }
+    """
+    serializer_class = AffirmationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return Affirmation.objects.filter(is_active=True).order_by('order', '-created_at')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        # Get optional category filter
+        category = request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(category=category)
+            serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            "affirmations": serializer.data,
+            "total": queryset.count(),
+            "categories": list(Affirmation.objects.filter(is_active=True).values_list('category', flat=True).distinct())
+        })
+
+
+class AffirmationDetailView(generics.RetrieveAPIView):
+    """
+    Get a single affirmation by ID.
+    
+    GET /api/affirmations/<id>/
+    """
+    serializer_class = AffirmationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return Affirmation.objects.filter(is_active=True)
+
+
+class AffirmationAdminView(APIView):
+    """
+    Admin endpoint to create/manage affirmations.
+    Only staff users can access this.
+    
+    POST /api/affirmations/admin/ - Create affirmation
+    POST /api/affirmations/admin/bulk/ - Create multiple affirmations
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        # Check if user is staff/admin
+        if not request.user.is_staff:
+            return Response(
+                {"error": "Admin access required"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = AffirmationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        affirmation = serializer.save()
+        
+        return Response(
+            AffirmationSerializer(affirmation).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class AffirmationBulkCreateView(APIView):
+    """
+    Bulk create affirmations (admin only).
+    
+    POST /api/affirmations/admin/bulk/
+    Body: { "affirmations": ["text1", "text2", ...] }
+    or: { "affirmations": [{"text": "...", "author": "..."}, ...] }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        if not request.user.is_staff:
+            return Response(
+                {"error": "Admin access required"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        affirmations_data = request.data.get('affirmations', [])
+        if not affirmations_data:
+            return Response(
+                {"error": "No affirmations provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        created = []
+        for idx, item in enumerate(affirmations_data):
+            if isinstance(item, str):
+                # Simple text format
+                aff = Affirmation.objects.create(
+                    text=item,
+                    order=idx
+                )
+            elif isinstance(item, dict):
+                # Object format with optional fields
+                aff = Affirmation.objects.create(
+                    text=item.get('text', ''),
+                    author=item.get('author', ''),
+                    category=item.get('category', 'general'),
+                    order=item.get('order', idx),
+                    is_active=item.get('is_active', True)
+                )
+            else:
+                continue
+            created.append(aff)
+        
+        return Response({
+            "created": len(created),
+            "affirmations": AffirmationSerializer(created, many=True).data
+        }, status=status.HTTP_201_CREATED)
 
 
 class LegacyAdvancedCareSupportView(APIView):

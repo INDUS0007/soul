@@ -5,7 +5,9 @@ from rest_framework import serializers
 import logging
 
 from .models import (
+    Affirmation,
     Assessment,
+    BreathingSession,
     Chat,
     ChatMessage,
     CounsellorProfile,
@@ -893,3 +895,99 @@ class AssessmentCreateSerializer(serializers.Serializer):
         # Store username directly in the table for easy viewing
         validated_data['username'] = user.username
         return Assessment.objects.create(user=user, **validated_data)
+
+
+class BreathingSessionSerializer(serializers.ModelSerializer):
+    """Serializer for breathing exercise sessions."""
+    username = serializers.CharField(read_only=True)
+    technique_display = serializers.CharField(source='get_technique_display', read_only=True)
+    
+    class Meta:
+        model = BreathingSession
+        fields = (
+            'id',
+            'user',
+            'username',
+            'technique',
+            'technique_display',
+            'duration_seconds',
+            'cycles_completed',
+            'inhale_seconds',
+            'hold_seconds',
+            'exhale_seconds',
+            'mood_before',
+            'mood_after',
+            'notes',
+            'completed',
+            'created_at',
+        )
+        read_only_fields = ('id', 'user', 'username', 'created_at')
+    
+    def create(self, validated_data):
+        """Create breathing session with user info."""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            validated_data['user'] = request.user
+            validated_data['username'] = request.user.username
+        return super().create(validated_data)
+
+
+class BreathingSessionCreateSerializer(serializers.Serializer):
+    """Serializer for creating breathing sessions."""
+    technique = serializers.ChoiceField(
+        choices=BreathingSession.TECHNIQUE_CHOICES,
+        default=BreathingSession.TECHNIQUE_DEEP
+    )
+    duration_seconds = serializers.IntegerField(min_value=0, default=0)
+    cycles_completed = serializers.IntegerField(min_value=0, default=0)
+    inhale_seconds = serializers.IntegerField(min_value=1, max_value=60, default=4)
+    hold_seconds = serializers.IntegerField(min_value=0, max_value=60, default=0)
+    exhale_seconds = serializers.IntegerField(min_value=1, max_value=60, default=4)
+    mood_before = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    mood_after = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    completed = serializers.BooleanField(default=True)
+    
+    def create(self, validated_data):
+        """Create breathing session."""
+        request = self.context.get('request')
+        user = request.user
+        return BreathingSession.objects.create(
+            user=user,
+            username=user.username,
+            **validated_data
+        )
+
+
+class AffirmationSerializer(serializers.ModelSerializer):
+    """Serializer for affirmations."""
+    
+    class Meta:
+        model = Affirmation
+        fields = (
+            'id',
+            'text',
+            'author',
+            'category',
+            'order',
+            'created_at',
+        )
+        read_only_fields = ('id', 'created_at')
+
+
+class AffirmationCreateSerializer(serializers.Serializer):
+    """Serializer for creating/updating affirmations (admin use)."""
+    text = serializers.CharField(max_length=1000)
+    author = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    category = serializers.CharField(max_length=50, required=False, default="general")
+    is_active = serializers.BooleanField(default=True)
+    order = serializers.IntegerField(min_value=0, default=0)
+    
+    def create(self, validated_data):
+        return Affirmation.objects.create(**validated_data)
+    
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

@@ -1720,3 +1720,127 @@ class Assessment(models.Model):
             f"Assessment saved: user={self.user_id}, mood_score={self.mood_score}, "
             f"created_at={self.created_at}"
         )
+
+
+class BreathingSession(models.Model):
+    """Records user breathing exercise sessions."""
+    
+    TECHNIQUE_BOX = "box"
+    TECHNIQUE_478 = "478"
+    TECHNIQUE_DEEP = "deep"
+    TECHNIQUE_CALM = "calm"
+    TECHNIQUE_CUSTOM = "custom"
+    
+    TECHNIQUE_CHOICES = [
+        (TECHNIQUE_BOX, "Box Breathing"),
+        (TECHNIQUE_478, "4-7-8 Breathing"),
+        (TECHNIQUE_DEEP, "Deep Breathing"),
+        (TECHNIQUE_CALM, "Calm Breathing"),
+        (TECHNIQUE_CUSTOM, "Custom"),
+    ]
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="breathing_sessions",
+        help_text="User who completed this breathing session"
+    )
+    username = models.CharField(
+        max_length=150,
+        default="",
+        help_text="Username at time of session"
+    )
+    technique = models.CharField(
+        max_length=20,
+        choices=TECHNIQUE_CHOICES,
+        default=TECHNIQUE_DEEP,
+        help_text="Breathing technique used"
+    )
+    duration_seconds = models.PositiveIntegerField(
+        default=0,
+        help_text="Total duration of the session in seconds"
+    )
+    cycles_completed = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of breathing cycles completed"
+    )
+    inhale_seconds = models.PositiveSmallIntegerField(
+        default=4,
+        help_text="Inhale duration in seconds"
+    )
+    hold_seconds = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Hold duration in seconds"
+    )
+    exhale_seconds = models.PositiveSmallIntegerField(
+        default=4,
+        help_text="Exhale duration in seconds"
+    )
+    completed = models.BooleanField(
+        default=True,
+        help_text="Whether the session was completed"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When the session was recorded"
+    )
+    
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Breathing Session"
+        verbose_name_plural = "Breathing Sessions"
+    
+    def __str__(self) -> str:
+        return f"{self.username or self.user.username} - {self.get_technique_display()} ({self.duration_seconds}s)"
+    
+    def save(self, *args, **kwargs):
+        # Auto-populate username if not set
+        if not self.username and self.user:
+            self.username = self.user.username
+        super().save(*args, **kwargs)
+
+
+class Affirmation(models.Model):
+    """
+    Daily affirmations/quotes that users can browse one at a time.
+    Admin can add many affirmations that users view individually.
+    """
+    text = models.TextField(
+        help_text="The affirmation/quote text"
+    )
+    author = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Author of the quote (optional)"
+    )
+    category = models.CharField(
+        max_length=50,
+        blank=True,
+        default="general",
+        help_text="Category (e.g., motivation, calm, self-love)"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this affirmation is visible to users"
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text="Display order (lower numbers first)"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When the affirmation was added"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="When the affirmation was last updated"
+    )
+    
+    class Meta:
+        ordering = ["order", "-created_at"]
+        verbose_name = "Affirmation"
+        verbose_name_plural = "Affirmations"
+    
+    def __str__(self) -> str:
+        preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
+        return f"{preview}"
