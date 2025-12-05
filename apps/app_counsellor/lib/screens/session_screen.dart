@@ -568,8 +568,6 @@ class _SessionScreenState extends State<SessionScreen> {
         return Icons.phone;
       case SessionType.chat:
         return Icons.chat;
-      default:
-        return Icons.question_mark;
     }
   }
 

@@ -116,21 +116,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (parsed <= 0 || parsed > 120) return 'Enter a realistic age';
     return null;
   }
-
-  // 
   String? _validatePhone(String? value) {
     if (value == null || value.trim().isEmpty) return 'Enter phone number';
     final cleaned = value.replaceAll(RegExp(r'[^0-9]'), '');
-    
-    // Check for non-digit characters in the *raw* input (before cleaning)
-    // NOTE: If you need to allow dashes or spaces, adjust the regex [^0-9\-\s]
-    if (RegExp(r'[a-zA-Z]').hasMatch(value)) {
-      return 'Enter only numbers (0-9) in the phone field.'; // <--- NEW ERROR MESSAGE
-    }
-
-    if (cleaned.length < 10) return 'Enter a valid phone number';
+    if (cleaned.length < 6) return 'Enter a valid phone number';
     return null;
   }
+  
 
   String? _validateEmail(String? value) {
     if (value == null || value.trim().isEmpty) return 'Enter your email';
@@ -311,10 +303,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }) {
     return InputDecoration(
       labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
       prefixIcon: prefix != null ? Icon(prefix) : null,
       suffixIcon: suffix,
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      isDense: false,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(25)),
       ),
@@ -433,28 +426,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onChanged: (value) =>
                       setState(() => _selectedDial = value ?? _selectedDial),
                 );
-                // final phoneField = TextFormField(
-                //   controller: _phoneCtrl,
-                //   keyboardType: TextInputType.phone,
-                //   textInputAction: TextInputAction.next,
-                //   decoration: _fieldDecoration(
-                //       label: 'Phone number', prefix: Icons.phone_outlined),
-                //   validator: _validatePhone,
-                // );
-                final phoneField = TextFormField(
-                  controller: _phoneCtrl,
-                  keyboardType: TextInputType.phone, // Suggests a numeric keyboard
-                  textInputAction: TextInputAction.next,
-                  
-                  // *** ADDED INPUT FORMATTER ***
-                  // inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  // ******************************
-                  
-                  decoration: _fieldDecoration(
-                      label: 'Phone number', prefix: Icons.phone_outlined),
+                   final phoneField = TextFormField(
+                    controller: _phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
+                    decoration: _fieldDecoration(
+                    label: 'Phone number', prefix: Icons.phone_outlined),
                   validator: _validatePhone,
                 );
-                // ---
 
                 if (vertical) {
                   return Column(
@@ -599,6 +578,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         key: _passwordFormKey,
         child: Column(
           children: [
+            const SizedBox(height: 16),
             TextFormField(
               controller: _passCtrl,
               obscureText: _obscure1,
@@ -606,11 +586,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 label: 'Password',
                 prefix: Icons.lock_outline,
                 suffix: _hasPasswordText1
-                    ? IconButton(
-                        onPressed: () => setState(() => _obscure1 = !_obscure1),
-                        icon: Icon(_obscure1
-                            ? Icons.visibility
-                            : Icons.visibility_off),
+                    ? SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          iconSize: 20,
+                          onPressed: () => setState(() => _obscure1 = !_obscure1),
+                          icon: Icon(_obscure1
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined),
+                        ),
                       )
                     : null,
               ),
@@ -624,11 +611,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 label: 'Confirm password',
                 prefix: Icons.lock_reset_outlined,
                 suffix: _hasPasswordText2
-                    ? IconButton(
-                        onPressed: () => setState(() => _obscure2 = !_obscure2),
-                        icon: Icon(_obscure2
-                            ? Icons.visibility
-                            : Icons.visibility_off),
+                    ? SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          iconSize: 20,
+                          onPressed: () => setState(() => _obscure2 = !_obscure2),
+                          icon: Icon(_obscure2
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined),
+                        ),
                       )
                     : null,
               ),

@@ -4869,6 +4869,69 @@ class ApiClient {
     );
   }
 
+  // ============================================================================
+  // CHAT HISTORY METHODS
+  // ============================================================================
+
+  /// Get user's chat history (past connections).
+  /// Returns active chats and completed/cancelled history.
+  Future<ChatHistoryResponse> getChatHistory() async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/chats/history/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return ChatHistoryResponse.fromJson(decoded);
+    }
+
+    throw ApiClientException(
+      'Unable to load chat history: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Get all users history for counselors.
+  /// Returns list of users the counselor has chatted with.
+  Future<CounsellorUsersHistoryResponse> getCounsellorUsersHistory() async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/counselor/users-history/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return CounsellorUsersHistoryResponse.fromJson(decoded);
+    }
+
+    throw ApiClientException(
+      'Unable to load users history: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Get a specific user's chat history for counselors.
+  Future<UserChatHistoryDetailResponse> getUserChatHistoryForCounsellor(int userId) async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/counselor/users-history/$userId/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return UserChatHistoryDetailResponse.fromJson(decoded);
+    }
+
+    throw ApiClientException(
+      'Unable to load user chat history: ${_extractErrorMessage(response)}',
+    );
+  }
+
   Future<Map<String, dynamic>> startSession(int sessionId) async {
     final response = await _sendAuthorized(
       (access) => http.post(
@@ -5066,4 +5129,416 @@ class ApiClient {
       throw ApiClientException('WebSocket connection failed: $e');
     }
   }
+
+  // ============================================================================
+  // ASSESSMENT API METHODS
+  // ============================================================================
+
+  /// Submit a new assessment with the user's responses (actual answer text).
+  /// Returns the created assessment data including calculated scores and feedback.
+  Future<AssessmentResult> submitAssessment({
+    required String feelingResponse,
+    required String sleepQualityResponse,
+    required String anxietyFrequencyResponse,
+    required String energyLevelResponse,
+    required String supportFeelingResponse,
+    required String stressManagementResponse,
+  }) async {
+    final payload = <String, dynamic>{
+      'feeling_response': feelingResponse,
+      'sleep_quality_response': sleepQualityResponse,
+      'anxiety_frequency_response': anxietyFrequencyResponse,
+      'energy_level_response': energyLevelResponse,
+      'support_feeling_response': supportFeelingResponse,
+      'stress_management_response': stressManagementResponse,
+    };
+
+    final response = await _sendAuthorized(
+      (access) => http.post(
+        Uri.parse('$base/assessments/'),
+        headers: _headers(access, {'Content-Type': 'application/json'}),
+        body: jsonEncode(payload),
+      ),
+    );
+
+    if (response.statusCode == 201) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return AssessmentResult.fromJson(decoded);
+    }
+
+    throw ApiClientException(
+      'Unable to submit assessment: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Fetch all assessments for the current user.
+  Future<List<AssessmentResult>> getAssessments() async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/assessments/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final assessments = decoded['assessments'] as List<dynamic>;
+      return assessments
+          .map((e) => AssessmentResult.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+
+    throw ApiClientException(
+      'Unable to fetch assessments: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Fetch a specific assessment by ID.
+  Future<AssessmentResult> getAssessment(int assessmentId) async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/assessments/$assessmentId/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return AssessmentResult.fromJson(decoded);
+    }
+
+    throw ApiClientException(
+      'Unable to fetch assessment: ${_extractErrorMessage(response)}',
+    );
+  }
+
+  /// Fetch assessment statistics for the current user.
+  Future<AssessmentStats> getAssessmentStats() async {
+    final response = await _sendAuthorized(
+      (access) => http.get(
+        Uri.parse('$base/assessments/stats/'),
+        headers: _headers(access),
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      return AssessmentStats.fromJson(decoded);
+    }
+
+    throw ApiClientException(
+      'Unable to fetch assessment stats: ${_extractErrorMessage(response)}',
+    );
+  }
+}
+
+// ============================================================================
+// ASSESSMENT DATA CLASSES
+// ============================================================================
+
+/// Represents a single assessment result from the API.
+class AssessmentResult {
+  const AssessmentResult({
+    required this.id,
+    required this.username,
+    required this.feelingResponse,
+    required this.sleepQualityResponse,
+    required this.anxietyFrequencyResponse,
+    required this.energyLevelResponse,
+    required this.supportFeelingResponse,
+    required this.stressManagementResponse,
+    required this.averageScore,
+    required this.moodScore,
+    required this.feedbackMessage,
+    required this.feedbackTip,
+    required this.notes,
+    required this.createdAt,
+  });
+
+  factory AssessmentResult.fromJson(Map<String, dynamic> json) {
+    return AssessmentResult(
+      id: json['id'] as int,
+      username: json['username'] as String? ?? '',
+      feelingResponse: json['feeling_response'] as String? ?? '',
+      sleepQualityResponse: json['sleep_quality_response'] as String? ?? '',
+      anxietyFrequencyResponse: json['anxiety_frequency_response'] as String? ?? '',
+      energyLevelResponse: json['energy_level_response'] as String? ?? '',
+      supportFeelingResponse: json['support_feeling_response'] as String? ?? '',
+      stressManagementResponse: json['stress_management_response'] as String? ?? '',
+      averageScore: (json['average_score'] as num).toDouble(),
+      moodScore: json['mood_score'] as int,
+      feedbackMessage: json['feedback_message'] as String,
+      feedbackTip: json['feedback_tip'] as String,
+      notes: json['notes'] as String? ?? '',
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  final int id;
+  final String username;
+  // Responses (actual answer text)
+  final String feelingResponse;
+  final String sleepQualityResponse;
+  final String anxietyFrequencyResponse;
+  final String energyLevelResponse;
+  final String supportFeelingResponse;
+  final String stressManagementResponse;
+  // Calculated scores
+  final double averageScore;
+  final int moodScore;
+  // Feedback
+  final String feedbackMessage;
+  final String feedbackTip;
+  final String notes;
+  final DateTime createdAt;
+}
+
+/// Represents assessment statistics from the API.
+class AssessmentStats {
+  const AssessmentStats({
+    required this.totalAssessments,
+    this.averageMoodScore,
+    this.latestAssessment,
+    required this.moodTrend,
+    this.message,
+  });
+
+  factory AssessmentStats.fromJson(Map<String, dynamic> json) {
+    return AssessmentStats(
+      totalAssessments: json['total_assessments'] as int,
+      averageMoodScore: json['average_mood_score'] != null
+          ? (json['average_mood_score'] as num).toDouble()
+          : null,
+      latestAssessment: json['latest_assessment'] != null
+          ? AssessmentResult.fromJson(
+              json['latest_assessment'] as Map<String, dynamic>)
+          : null,
+      moodTrend: json['mood_trend'] as String,
+      message: json['message'] as String?,
+    );
+  }
+
+  final int totalAssessments;
+  final double? averageMoodScore;
+  final AssessmentResult? latestAssessment;
+  final String moodTrend;
+  final String? message;
+}
+
+// ============================================================================
+// CHAT HISTORY DATA CLASSES
+// ============================================================================
+
+/// Represents a single chat in the history with detailed information.
+class ChatHistoryItem {
+  const ChatHistoryItem({
+    required this.id,
+    required this.userId,
+    required this.userUsername,
+    required this.userName,
+    this.counsellorId,
+    this.counsellorUsername,
+    this.counsellorName,
+    required this.status,
+    this.initialMessage,
+    required this.createdAt,
+    this.startedAt,
+    this.endedAt,
+    required this.durationMinutes,
+    required this.durationDisplay,
+    required this.billedAmount,
+    required this.messageCount,
+    this.lastMessage,
+    this.lastMessageTime,
+  });
+
+  factory ChatHistoryItem.fromJson(Map<String, dynamic> json) {
+    return ChatHistoryItem(
+      id: json['id'] as int,
+      userId: json['user'] as int,
+      userUsername: json['user_username'] as String? ?? '',
+      userName: json['user_name'] as String? ?? '',
+      counsellorId: json['counsellor'] as int?,
+      counsellorUsername: json['counsellor_username'] as String?,
+      counsellorName: json['counsellor_name'] as String?,
+      status: json['status'] as String,
+      initialMessage: json['initial_message'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      startedAt: json['started_at'] != null
+          ? DateTime.parse(json['started_at'] as String)
+          : null,
+      endedAt: json['ended_at'] != null
+          ? DateTime.parse(json['ended_at'] as String)
+          : null,
+      durationMinutes: json['duration_minutes'] as int? ?? 0,
+      durationDisplay: json['duration_display'] as String? ?? '0m',
+      billedAmount: json['billed_amount'] != null
+          ? (json['billed_amount'] is String
+              ? double.tryParse(json['billed_amount'] as String) ?? 0.0
+              : (json['billed_amount'] as num).toDouble())
+          : 0.0,
+      messageCount: json['message_count'] as int? ?? 0,
+      lastMessage: json['last_message'] != null
+          ? LastMessageInfo.fromJson(json['last_message'] as Map<String, dynamic>)
+          : null,
+      lastMessageTime: json['last_message_time'] != null
+          ? DateTime.parse(json['last_message_time'] as String)
+          : null,
+    );
+  }
+
+  final int id;
+  final int userId;
+  final String userUsername;
+  final String userName;
+  final int? counsellorId;
+  final String? counsellorUsername;
+  final String? counsellorName;
+  final String status;
+  final String? initialMessage;
+  final DateTime createdAt;
+  final DateTime? startedAt;
+  final DateTime? endedAt;
+  final int durationMinutes;
+  final String durationDisplay;
+  final double billedAmount;
+  final int messageCount;
+  final LastMessageInfo? lastMessage;
+  final DateTime? lastMessageTime;
+}
+
+/// Last message preview information.
+class LastMessageInfo {
+  const LastMessageInfo({
+    required this.text,
+    required this.senderUsername,
+    required this.isUser,
+  });
+
+  factory LastMessageInfo.fromJson(Map<String, dynamic> json) {
+    return LastMessageInfo(
+      text: json['text'] as String,
+      senderUsername: json['sender_username'] as String,
+      isUser: json['is_user'] as bool,
+    );
+  }
+
+  final String text;
+  final String senderUsername;
+  final bool isUser;
+}
+
+/// Response for user chat history endpoint.
+class ChatHistoryResponse {
+  const ChatHistoryResponse({
+    required this.activeChats,
+    required this.history,
+    required this.totalHistoryCount,
+  });
+
+  factory ChatHistoryResponse.fromJson(Map<String, dynamic> json) {
+    return ChatHistoryResponse(
+      activeChats: (json['active_chats'] as List<dynamic>)
+          .map((e) => ChatHistoryItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      history: (json['history'] as List<dynamic>)
+          .map((e) => ChatHistoryItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      totalHistoryCount: json['total_history_count'] as int,
+    );
+  }
+
+  final List<ChatHistoryItem> activeChats;
+  final List<ChatHistoryItem> history;
+  final int totalHistoryCount;
+}
+
+/// Summary of a user's chat history (for counselor view).
+class UserHistorySummary {
+  const UserHistorySummary({
+    required this.userId,
+    required this.username,
+    required this.userName,
+    required this.totalChats,
+    required this.totalMessages,
+    required this.totalDurationMinutes,
+    this.lastChatDate,
+  });
+
+  factory UserHistorySummary.fromJson(Map<String, dynamic> json) {
+    return UserHistorySummary(
+      userId: json['user_id'] as int,
+      username: json['username'] as String,
+      userName: json['user_name'] as String,
+      totalChats: json['total_chats'] as int,
+      totalMessages: json['total_messages'] as int? ?? 0,
+      totalDurationMinutes: json['total_duration_minutes'] as int? ?? 0,
+      lastChatDate: json['last_chat_date'] != null
+          ? DateTime.parse(json['last_chat_date'] as String)
+          : null,
+    );
+  }
+
+  final int userId;
+  final String username;
+  final String userName;
+  final int totalChats;
+  final int totalMessages;
+  final int totalDurationMinutes;
+  final DateTime? lastChatDate;
+}
+
+/// Response for counselor users history endpoint.
+class CounsellorUsersHistoryResponse {
+  const CounsellorUsersHistoryResponse({
+    required this.totalUsers,
+    required this.users,
+  });
+
+  factory CounsellorUsersHistoryResponse.fromJson(Map<String, dynamic> json) {
+    return CounsellorUsersHistoryResponse(
+      totalUsers: json['total_users'] as int,
+      users: (json['users'] as List<dynamic>)
+          .map((e) => UserHistorySummary.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final int totalUsers;
+  final List<UserHistorySummary> users;
+}
+
+/// Response for counselor viewing a specific user's chat history.
+class UserChatHistoryDetailResponse {
+  const UserChatHistoryDetailResponse({
+    required this.userId,
+    required this.username,
+    required this.userName,
+    required this.totalChats,
+    required this.totalMessages,
+    required this.totalDurationMinutes,
+    required this.chats,
+  });
+
+  factory UserChatHistoryDetailResponse.fromJson(Map<String, dynamic> json) {
+    return UserChatHistoryDetailResponse(
+      userId: json['user_id'] as int,
+      username: json['username'] as String,
+      userName: json['user_name'] as String,
+      totalChats: json['total_chats'] as int,
+      totalMessages: json['total_messages'] as int? ?? 0,
+      totalDurationMinutes: json['total_duration_minutes'] as int? ?? 0,
+      chats: (json['chats'] as List<dynamic>)
+          .map((e) => ChatHistoryItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final int userId;
+  final String username;
+  final String userName;
+  final int totalChats;
+  final int totalMessages;
+  final int totalDurationMinutes;
+  final List<ChatHistoryItem> chats;
 }

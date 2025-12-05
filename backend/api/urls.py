@@ -113,13 +113,18 @@ from django.urls import path
 # TokenRefreshView is now imported from views
 
 from .views import (
+    AssessmentDetailView,
+    AssessmentListCreateView,
+    AssessmentStatsView,
     ChatAcceptView,
     ChatCreateView,
     ChatListView,
     ChatMessageListView,
+    CounsellorAllUserHistoryView,
     CounsellorAppointmentsView,
     CounsellorProfileView,
     CounsellorStatsView,
+    CounsellorUserChatHistoryView,
     DashboardView,
     EmailOrUsernameTokenObtainPairView,
     LegacyAdvancedCareSupportView,
@@ -153,6 +158,7 @@ from .views import (
     TokenRefreshView,
     UpcomingSessionDetailView,
     UpcomingSessionListCreateView,
+    UserChatHistoryView,
     UserSettingsView,
     WalletDetailView,
     WalletRechargeView,
@@ -204,14 +210,21 @@ urlpatterns = [
     path("legacy/affirmations/", LegacyAffirmationsView.as_view()),
     path("legacy/advanced-care/", LegacyAdvancedCareSupportView.as_view()),
     path("legacy/feature-detail/", LegacyFeatureDetailView.as_view()),
+    # Assessment endpoints
+    path("assessments/", AssessmentListCreateView.as_view()),
+    path("assessments/<int:assessment_id>/", AssessmentDetailView.as_view()),
+    path("assessments/stats/", AssessmentStatsView.as_view()),
     # Counselor endpoints
     path("counselor/profile/", CounsellorProfileView.as_view()),
     path("counselor/appointments/", CounsellorAppointmentsView.as_view()),
     path("counselor/stats/", CounsellorStatsView.as_view()),
     path("counselor/queued-chats/", QueuedChatsView.as_view()),
+    path("counselor/users-history/", CounsellorAllUserHistoryView.as_view()),
+    path("counselor/users-history/<int:user_id>/", CounsellorUserChatHistoryView.as_view()),
     # Chat endpoints
     path("chats/", ChatCreateView.as_view()),
     path("chats/list/", ChatListView.as_view()),
+    path("chats/history/", UserChatHistoryView.as_view()),
     path("chats/<int:chat_id>/accept/", ChatAcceptView.as_view()),
     path("chats/<int:chat_id>/messages/", ChatMessageListView.as_view()),
 ]

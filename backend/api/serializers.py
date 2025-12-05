@@ -5,6 +5,7 @@ from rest_framework import serializers
 import logging
 
 from .models import (
+    Assessment,
     Chat,
     ChatMessage,
     CounsellorProfile,
@@ -27,8 +28,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     full_name = serializers.CharField(required=False, allow_blank=True)
     nickname = serializers.CharField(required=False, allow_blank=True)
-    # phone = serializers.CharField(required=False, allow_blank=True)
-    phone = serializers.CharField(required=False, allow_blank=True, max_length=10, min_length=6)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    # phone = serializers.CharField(required=False, allow_blank=True, max_length=10, min_length=6)
     age = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     gender = serializers.CharField(required=False, allow_blank=True)
     otp_token = serializers.CharField(write_only=True)
@@ -362,6 +363,106 @@ class ChatMessageCreateSerializer(serializers.Serializer):
     text = serializers.CharField(required=True, allow_blank=False)
 
 
+class ChatHistorySerializer(serializers.ModelSerializer):
+    """
+    Serializer for chat history with detailed information.
+    Used for users to view their past connections and counselors to view user histories.
+    """
+    user_username = serializers.CharField(source="user.username", read_only=True)
+    user_name = serializers.SerializerMethodField()
+    counsellor_username = serializers.CharField(source="counsellor.username", read_only=True, allow_null=True)
+    counsellor_name = serializers.SerializerMethodField()
+    message_count = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    last_message_time = serializers.SerializerMethodField()
+    duration_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Chat
+        fields = (
+            "id",
+            "user",
+            "user_username",
+            "user_name",
+            "counsellor",
+            "counsellor_username",
+            "counsellor_name",
+            "status",
+            "initial_message",
+            "created_at",
+            "started_at",
+            "ended_at",
+            "duration_minutes",
+            "duration_display",
+            "billed_amount",
+            "message_count",
+            "last_message",
+            "last_message_time",
+        )
+        read_only_fields = fields
+    
+    def get_user_name(self, obj):
+        if hasattr(obj.user, "profile"):
+            return obj.user.profile.full_name or obj.user.username
+        return obj.user.username
+    
+    def get_counsellor_name(self, obj):
+        if obj.counsellor:
+            # Try to get full_name from UserProfile first
+            if hasattr(obj.counsellor, "profile") and obj.counsellor.profile.full_name:
+                return obj.counsellor.profile.full_name
+            # Fallback to Django User's get_full_name() or username
+            return obj.counsellor.get_full_name() or obj.counsellor.username
+        return None
+    
+    def get_message_count(self, obj):
+        return obj.messages.count()
+    
+    def get_last_message(self, obj):
+        last_msg = obj.messages.order_by('-created_at').first()
+        if last_msg:
+            # Truncate message if too long
+            text = last_msg.text
+            if len(text) > 100:
+                text = text[:100] + "..."
+            return {
+                "text": text,
+                "sender_username": last_msg.sender.username,
+                "is_user": last_msg.sender == obj.user,
+            }
+        return None
+    
+    def get_last_message_time(self, obj):
+        last_msg = obj.messages.order_by('-created_at').first()
+        if last_msg:
+            return last_msg.created_at
+        return obj.updated_at
+    
+    def get_duration_display(self, obj):
+        if obj.duration_minutes:
+            hours = obj.duration_minutes // 60
+            minutes = obj.duration_minutes % 60
+            if hours > 0:
+                return f"{hours}h {minutes}m"
+            return f"{minutes}m"
+        return "0m"
+
+
+class UserChatHistorySummarySerializer(serializers.Serializer):
+    """
+    Summary serializer for a user's chat history (for counselor view).
+    Shows aggregated stats for a specific user.
+    """
+    user_id = serializers.IntegerField()
+    username = serializers.CharField()
+    user_name = serializers.CharField()
+    total_chats = serializers.IntegerField()
+    total_messages = serializers.IntegerField()
+    total_duration_minutes = serializers.IntegerField()
+    last_chat_date = serializers.DateTimeField()
+    chats = ChatHistorySerializer(many=True)
+
+
 class SendOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -633,3 +734,158 @@ class CounsellorStatsSerializer(serializers.Serializer):
     monthly_earnings = serializers.DecimalField(max_digits=10, decimal_places=2)
     total_earnings = serializers.DecimalField(max_digits=10, decimal_places=2)
     queued_chats = serializers.IntegerField(default=0)
+
+
+# ============================================================================
+# ASSESSMENT SERIALIZERS
+# ============================================================================
+
+class AssessmentSerializer(serializers.ModelSerializer):
+    """Serializer for reading Assessment data."""
+    username = serializers.CharField(source="user.username", read_only=True)
+    
+    class Meta:
+        model = Assessment
+        fields = (
+            "id",
+            "username",
+            "feeling_response",
+            "sleep_quality_response",
+            "anxiety_frequency_response",
+            "energy_level_response",
+            "support_feeling_response",
+            "stress_management_response",
+            "average_score",
+            "mood_score",
+            "feedback_message",
+            "feedback_tip",
+            "notes",
+            "created_at",
+        )
+        read_only_fields = (
+            "id",
+            "username",
+            "average_score",
+            "mood_score",
+            "feedback_message",
+            "feedback_tip",
+            "notes",
+            "created_at",
+        )
+
+
+# Answer mappings for each question - maps answer text to score
+FEELING_OPTIONS = {
+    'Very low': 0, 'Low': 1, 'Neutral': 2, 'Positive': 3, 'Very positive': 4
+}
+SLEEP_OPTIONS = {
+    'Poor': 0, 'Fair': 1, 'Average': 2, 'Good': 3, 'Excellent': 4
+}
+ANXIETY_OPTIONS = {
+    'Rarely': 0, 'Sometimes': 1, 'Often': 2, 'Very often': 3, 'Always': 4
+}
+ENERGY_OPTIONS = {
+    'Exhausted': 0, 'Low': 1, 'Moderate': 2, 'Energized': 3, 'Very energized': 4
+}
+SUPPORT_OPTIONS = {
+    'Not at all': 0, 'Rarely': 1, 'Sometimes': 2, 'Often': 3, 'Always': 4
+}
+STRESS_OPTIONS = {
+    'Overwhelmed': 0, 'Struggling': 1, 'Coping': 2, 'Managing well': 3, 'Thriving': 4
+}
+
+
+class AssessmentCreateSerializer(serializers.Serializer):
+    """Serializer for creating a new assessment with answer text."""
+    # Accept the actual answer text
+    feeling_response = serializers.CharField(max_length=50)
+    sleep_quality_response = serializers.CharField(max_length=50)
+    anxiety_frequency_response = serializers.CharField(max_length=50)
+    energy_level_response = serializers.CharField(max_length=50)
+    support_feeling_response = serializers.CharField(max_length=50)
+    stress_management_response = serializers.CharField(max_length=50)
+    
+    def validate_feeling_response(self, value):
+        if value not in FEELING_OPTIONS:
+            raise serializers.ValidationError(f"Invalid answer. Must be one of: {', '.join(FEELING_OPTIONS.keys())}")
+        return value
+    
+    def validate_sleep_quality_response(self, value):
+        if value not in SLEEP_OPTIONS:
+            raise serializers.ValidationError(f"Invalid answer. Must be one of: {', '.join(SLEEP_OPTIONS.keys())}")
+        return value
+    
+    def validate_anxiety_frequency_response(self, value):
+        if value not in ANXIETY_OPTIONS:
+            raise serializers.ValidationError(f"Invalid answer. Must be one of: {', '.join(ANXIETY_OPTIONS.keys())}")
+        return value
+    
+    def validate_energy_level_response(self, value):
+        if value not in ENERGY_OPTIONS:
+            raise serializers.ValidationError(f"Invalid answer. Must be one of: {', '.join(ENERGY_OPTIONS.keys())}")
+        return value
+    
+    def validate_support_feeling_response(self, value):
+        if value not in SUPPORT_OPTIONS:
+            raise serializers.ValidationError(f"Invalid answer. Must be one of: {', '.join(SUPPORT_OPTIONS.keys())}")
+        return value
+    
+    def validate_stress_management_response(self, value):
+        if value not in STRESS_OPTIONS:
+            raise serializers.ValidationError(f"Invalid answer. Must be one of: {', '.join(STRESS_OPTIONS.keys())}")
+        return value
+    
+    def validate(self, attrs):
+        """Validate and calculate scores from answer text."""
+        # Calculate scores from responses (for mood calculation only)
+        feeling_score = FEELING_OPTIONS[attrs['feeling_response']]
+        sleep_score = SLEEP_OPTIONS[attrs['sleep_quality_response']]
+        anxiety_score = ANXIETY_OPTIONS[attrs['anxiety_frequency_response']]
+        energy_score = ENERGY_OPTIONS[attrs['energy_level_response']]
+        support_score = SUPPORT_OPTIONS[attrs['support_feeling_response']]
+        stress_score = STRESS_OPTIONS[attrs['stress_management_response']]
+        
+        # Calculate average score
+        scores = [feeling_score, sleep_score, anxiety_score, energy_score, support_score, stress_score]
+        average_score = sum(scores) / len(scores)
+        
+        # Calculate mood score (0-100)
+        mood_score = round((average_score / 4) * 100)
+        
+        attrs['average_score'] = round(average_score, 2)
+        attrs['mood_score'] = mood_score
+        
+        # Generate feedback and notes based on mood score
+        if mood_score == 100:
+            attrs['feedback_message'] = '🎉 Wow! You achieved a perfect score! You are in an amazing state of wellbeing!'
+            attrs['feedback_tip'] = 'Keep doing what you\'re doing - you\'re truly thriving! Consider sharing your positive energy with others.'
+            attrs['notes'] = 'Perfect score achieved! User is experiencing optimal mental wellness across all areas. Excellent sleep, energy, support system, and stress management.'
+        elif mood_score >= 90:
+            attrs['feedback_message'] = '🌟 Outstanding! You are in an excellent state of mental wellbeing!'
+            attrs['feedback_tip'] = 'Your positive habits are clearly working. Keep nurturing your wellbeing and inspire others around you.'
+            attrs['notes'] = 'Excellent score. User shows strong mental wellness indicators. All areas performing well.'
+        elif mood_score >= 80:
+            attrs['feedback_message'] = 'You appear to be in a positive and stable mood. Keep nurturing your wellbeing.'
+            attrs['feedback_tip'] = 'Continue your habits that work well—perhaps share your positivity with someone today.'
+            attrs['notes'] = 'Good mental health indicators. User is managing well overall.'
+        elif mood_score >= 60:
+            attrs['feedback_message'] = 'You seem slightly stressed but generally balanced.'
+            attrs['feedback_tip'] = 'Try a short mindfulness break or journaling to stay grounded.'
+            attrs['notes'] = 'Moderate score. Some areas may need attention. Consider stress reduction techniques.'
+        elif mood_score >= 40:
+            attrs['feedback_message'] = 'You may be experiencing some stress or low mood right now.'
+            attrs['feedback_tip'] = 'Consider reaching out to a friend and practicing deep breathing today.'
+            attrs['notes'] = 'Below average score. User may benefit from counseling support and self-care activities.'
+        else:
+            attrs['feedback_message'] = 'Your responses suggest notable stress or low mood.'
+            attrs['feedback_tip'] = 'It might help to speak with someone you trust or a mental health professional.'
+            attrs['notes'] = 'Low score. Professional support recommended. User showing signs of significant stress or low mood.'
+        
+        return attrs
+    
+    def create(self, validated_data):
+        """Create and save the assessment."""
+        user = self.context['request'].user
+        # Store username directly in the table for easy viewing
+        validated_data['username'] = user.username
+        return Assessment.objects.create(user=user, **validated_data)

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import 'package:common/api/api_client.dart';
 import 'package:common/widgets/widgets.dart';
 
 class AIAssessmentPage extends StatefulWidget {
@@ -12,7 +14,11 @@ class AIAssessmentPage extends StatefulWidget {
 }
 
 class _AIAssessmentPageState extends State<AIAssessmentPage> {
-  final List<_AssessmentQuestion> _questions = const [
+  final ApiClient _apiClient = ApiClient();
+  final Random _random = Random();
+  
+  // Original questions with options in score order (0=lowest, 4=highest)
+  static const List<_AssessmentQuestion> _originalQuestions = [
     _AssessmentQuestion(
       text: 'How have you been feeling lately?',
       options: ['Very low', 'Low', 'Neutral', 'Positive', 'Very positive'],
@@ -45,11 +51,34 @@ class _AIAssessmentPageState extends State<AIAssessmentPage> {
     ),
   ];
 
-  final Map<int, int> _selectedOptions = {};
+  // Shuffled options with their original score indices
+  // Each question has a list of (displayText, originalScoreIndex) pairs
+  late List<List<_ShuffledOption>> _shuffledOptions;
+  
+  // Maps questionIndex -> selected answer text
+  final Map<int, String> _selectedAnswers = {};
   bool _isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _shuffleAllOptions();
+  }
+
+  void _shuffleAllOptions() {
+    _shuffledOptions = _originalQuestions.map((question) {
+      // Create list of options with their original indices
+      final options = question.options.asMap().entries.map((entry) {
+        return _ShuffledOption(text: entry.value, originalIndex: entry.key);
+      }).toList();
+      // Shuffle the options
+      options.shuffle(_random);
+      return options;
+    }).toList();
+  }
+
   Future<void> _handleAssessment() async {
-    if (_selectedOptions.length < _questions.length) {
+    if (_selectedAnswers.length < _originalQuestions.length) {
       showErrorSnackBar(context, 'Please answer all questions before getting your assessment.');
       return;
     }
@@ -58,78 +87,185 @@ class _AIAssessmentPageState extends State<AIAssessmentPage> {
       _isLoading = true;
     });
 
-    await Future<void>.delayed(const Duration(seconds: 2));
+    try {
+      // Submit assessment to backend API using actual answer text
+      final result = await _apiClient.submitAssessment(
+        feelingResponse: _selectedAnswers[0] ?? '',
+        sleepQualityResponse: _selectedAnswers[1] ?? '',
+        anxietyFrequencyResponse: _selectedAnswers[2] ?? '',
+        energyLevelResponse: _selectedAnswers[3] ?? '',
+        supportFeelingResponse: _selectedAnswers[4] ?? '',
+        stressManagementResponse: _selectedAnswers[5] ?? '',
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _isLoading = false;
-    });
+      setState(() {
+        _isLoading = false;
+      });
 
-    final double averageScore =
-        _selectedOptions.values.reduce((a, b) => a + b) /
-            _selectedOptions.values.length;
-    final int moodScore = (averageScore / (_maxOptionIndex + 1) * 100).round();
-    final _AssessmentFeedback feedback = _generateFeedback(moodScore);
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFFE6F7F8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('Your AI Assessment'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Mood score: $moodScore/100',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF007A78),
-                      fontWeight: FontWeight.w600,
-                    ),
+      // Show results from backend response
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFFE6F7F8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('Your AI Assessment'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mood score: ${result.moodScore}/100',
+                  style: Theme.of(dialogContext).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFF007A78),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Text(result.feedbackMessage),
+                const SizedBox(height: 16),
+                Text(
+                  'Tip: ${result.feedbackTip}',
+                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: const Color(0xFF155E75),
+                      ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  Navigator.of(context).pop(); // Go back to previous screen
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF666666),
+                ),
+                child: const Text('Back'),
               ),
-              const SizedBox(height: 12),
-              Text(feedback.message),
-              const SizedBox(height: 16),
-              Text(
-                'Tip: ${feedback.tip}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontStyle: FontStyle.italic,
-                      color: const Color(0xFF155E75),
-                    ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _retakeAssessment();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF007A78),
+                ),
+                child: const Text('Retake Assessment'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _retakeAssessment();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF007A78),
-              ),
-              child: const Text('Retake Assessment'),
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Fallback to local calculation if API fails
+      // Calculate scores from answers locally
+      final scores = _selectedAnswers.entries.map((entry) {
+        final options = _originalQuestions[entry.key].options;
+        return options.indexOf(entry.value);
+      }).toList();
+      
+      final double averageScore = scores.reduce((a, b) => a + b) / scores.length;
+      final int moodScore = (averageScore / (_maxOptionIndex + 1) * 100).round();
+      final _AssessmentFeedback feedback = _generateFeedback(moodScore);
+
+      showErrorSnackBar(context, 'Could not save assessment to server. Showing local results.');
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFFE6F7F8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          ],
-        );
-      },
-    );
+            title: const Text('Your AI Assessment'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mood score: $moodScore/100',
+                  style: Theme.of(dialogContext).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFF007A78),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Text(feedback.message),
+                const SizedBox(height: 16),
+                Text(
+                  'Tip: ${feedback.tip}',
+                  style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: const Color(0xFF155E75),
+                      ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  Navigator.of(context).pop(); // Go back to previous screen
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF666666),
+                ),
+                child: const Text('Back'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _retakeAssessment();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF007A78),
+                ),
+                child: const Text('Retake Assessment'),
+              ),
+            ],
+          );
+        },
+      );
+    }
   }
 
   void _retakeAssessment() {
     setState(() {
-      _selectedOptions.clear();
+      _selectedAnswers.clear();
+      _shuffleAllOptions(); // Shuffle options for retake
       _isLoading = false;
     });
   }
 
   _AssessmentFeedback _generateFeedback(int score) {
-    if (score >= 80) {
+    if (score == 100) {
+      return const _AssessmentFeedback(
+        message:
+            '🎉 Wow! You achieved a perfect score! You are in an amazing state of wellbeing!',
+        tip:
+            'Keep doing what you\'re doing - you\'re truly thriving! Consider sharing your positive energy with others.',
+      );
+    } else if (score >= 90) {
+      return const _AssessmentFeedback(
+        message:
+            '🌟 Outstanding! You are in an excellent state of mental wellbeing!',
+        tip:
+            'Your positive habits are clearly working. Keep nurturing your wellbeing and inspire others around you.',
+      );
+    } else if (score >= 80) {
       return const _AssessmentFeedback(
         message:
             'You appear to be in a positive and stable mood. Keep nurturing your wellbeing.',
@@ -156,7 +292,7 @@ class _AIAssessmentPageState extends State<AIAssessmentPage> {
     }
   }
 
-  int get _maxOptionIndex => _questions.first.options.length - 1;
+  int get _maxOptionIndex => _originalQuestions.first.options.length - 1;
 
   @override
   Widget build(BuildContext context) {
@@ -181,20 +317,21 @@ class _AIAssessmentPageState extends State<AIAssessmentPage> {
                         ),
                   ),
                   const SizedBox(height: 24),
-                  ..._questions.asMap().entries.map(
-                        (entry) => Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: _QuestionCard(
-                            question: entry.value,
-                            selectedIndex: _selectedOptions[entry.key],
-                            onOptionSelected: (index) {
-                              setState(() {
-                                _selectedOptions[entry.key] = index;
-                              });
-                            },
-                          ),
+                ..._originalQuestions.asMap().entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: _ShuffledQuestionCard(
+                          questionText: entry.value.text,
+                          shuffledOptions: _shuffledOptions[entry.key],
+                          selectedAnswerText: _selectedAnswers[entry.key],
+                          onOptionSelected: (answerText) {
+                            setState(() {
+                              _selectedAnswers[entry.key] = answerText;
+                            });
+                          },
                         ),
                       ),
+                    ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
@@ -242,16 +379,26 @@ class _AIAssessmentPageState extends State<AIAssessmentPage> {
   }
 }
 
-class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({
-    required this.question,
-    required this.selectedIndex,
+/// Represents a shuffled option with its display text and original score index
+class _ShuffledOption {
+  const _ShuffledOption({required this.text, required this.originalIndex});
+
+  final String text;
+  final int originalIndex; // The score value (0-4)
+}
+
+class _ShuffledQuestionCard extends StatelessWidget {
+  const _ShuffledQuestionCard({
+    required this.questionText,
+    required this.shuffledOptions,
+    required this.selectedAnswerText,
     required this.onOptionSelected,
   });
 
-  final _AssessmentQuestion question;
-  final int? selectedIndex;
-  final ValueChanged<int> onOptionSelected;
+  final String questionText;
+  final List<_ShuffledOption> shuffledOptions;
+  final String? selectedAnswerText; // The answer text that was selected
+  final ValueChanged<String> onOptionSelected; // Called with answer text
 
   @override
   Widget build(BuildContext context) {
@@ -266,20 +413,20 @@ class _QuestionCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              question.text,
+              questionText,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFF0A3C4C),
                   ),
             ),
             const SizedBox(height: 12),
-            ...question.options.asMap().entries.map(
-                  (entry) => RadioListTile<int>(
+            ...shuffledOptions.map(
+                  (option) => RadioListTile<String>(
                     contentPadding: EdgeInsets.zero,
                     activeColor: const Color(0xFF007A78),
-                    title: Text(entry.value),
-                    value: entry.key,
-                    groupValue: selectedIndex,
+                    title: Text(option.text),
+                    value: option.text,
+                    groupValue: selectedAnswerText,
                     onChanged: (value) {
                       if (value != null) {
                         onOptionSelected(value);

@@ -20,7 +20,6 @@ import 'breathing_page.dart';
 import 'expert_connect_page.dart';
 import 'guidelines_page.dart';
 import 'insights_reports_page.dart';
-import 'journal_page.dart';
 import 'login_screen.dart';
 import 'meditation_page.dart';
 import 'mindcare_booster_page.dart';
@@ -408,7 +407,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (normalized.contains('journal')) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const MyJournalPage()),
+        MaterialPageRoute(builder: (_) => const WellnessJournalPage()),
       );
       return;
     }
@@ -1189,7 +1188,7 @@ class _DashboardPageState extends State<DashboardPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
                 Text(
-                  'Upcoming this week',
+                  'Upcoming',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
@@ -2627,31 +2626,6 @@ class _ChatWithCounsellorPageState extends State<ChatWithCounsellorPage>
   void _addCounsellorMessage(String text) {
     setState(() => _chatMessages.add(ChatMessage(text: text, isUser: false)));
     _scrollToBottom();
-  }
-
-  String _generateCounsellorResponse(String userMessage) {
-    final lowerMessage = userMessage.toLowerCase();
-    final responses = [
-      "I understand. It takes courage to share what you're going through. Can you tell me more about how this is affecting your daily life?",
-      "Thank you for opening up. Your feelings are valid, and it's okay to feel this way. What would you like to focus on today?",
-      "I hear you. Let's work through this together. Is there a specific moment or situation that triggers these feelings?",
-      "You're not alone in this. Many people experience similar challenges. What coping strategies have you tried so far?",
-      "I appreciate you sharing that with me. How do you feel when you think about seeking support?",
-    ];
-
-    if (lowerMessage.contains('stress') ||
-        lowerMessage.contains('overwhelmed')) {
-      return "Stress can be really challenging. Let's explore some relaxation techniques. Have you tried deep breathing or mindfulness exercises?";
-    } else if (lowerMessage.contains('sad') ||
-        lowerMessage.contains('depressed')) {
-      return "I'm sorry you're feeling this way. Remember that your feelings matter. How long have you been feeling like this?";
-    } else if (lowerMessage.contains('anxiety') ||
-        lowerMessage.contains('worried')) {
-      return "Anxiety can feel overwhelming, but there are ways to manage it. Can you identify what triggers your anxiety?";
-    } else if (lowerMessage.contains('thank')) {
-      return "You're very welcome. I'm here whenever you need support. Is there anything else you'd like to discuss?";
-    }
-    return responses[DateTime.now().millisecond % responses.length];
   }
 
   void _scrollToBottom() {

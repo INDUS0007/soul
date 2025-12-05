@@ -1,297 +1,393 @@
+<#
+.SYNOPSIS
+    Runs the Django backend and Flutter User App on Android emulator.
+
+.DESCRIPTION
+    This script starts the Django backend server and launches the Flutter user app
+    on an Android emulator or connected Android device.
+    
+    IMPORTANT: Android emulator uses 10.0.2.2 to access host's 127.0.0.1
+    
+    If you get an execution policy error, run:
+        powershell -ExecutionPolicy Bypass -File .\run_android.ps1
+    Or set execution policy once:
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+.PARAMETER Release
+    Run Flutter app in release mode.
+
+.PARAMETER Port
+    Backend port (default: 8000)
+
+.EXAMPLE
+    .\run_android.ps1
+    .\run_android.ps1 -Release
+    
+.NOTES
+    Email Configuration:
+    - By default, uses SMTP backend (Gmail - smtp.gmail.com:587)
+    - To use console backend (see OTPs in terminal), set environment variable:
+        $env:USE_CONSOLE_EMAIL = 'true'
+        .\run_android.ps1
+    
+    Flutter Hot Reload:
+    - While Flutter app is running, press 'r' for hot reload
+    - Press 'R' for hot restart
+    - Press 'q' to quit
+#>
+
 param(
     [switch]$Release,
-    [string]$DeviceId,
-    [string]$LanIp,
-    [int]$BackendPort = 8000,
-    [int]$DeviceBootTimeoutSeconds = 240,
-    [switch]$SkipEmulatorLaunch,
-    [ValidateSet("host", "angle_indirect", "swiftshader_indirect")]
-    [string]$GpuMode = "host"
+    [int]$Port = 8000
 )
 
-$ErrorActionPreference = "Stop"
-Set-StrictMode -Version 3
+$ErrorActionPreference = 'Stop'
 
-function Write-Step {
-    param([string]$Message)
-    Write-Host ""
-    Write-Host "➡ $Message" -ForegroundColor Cyan
-}
+# Determine project root relative to this script
+$projectRoot = $PSScriptRoot
+$backendPath = Join-Path $projectRoot 'backend'
+$flutterPath = Join-Path $projectRoot 'apps\app_user'
+$pythonExe = Join-Path $projectRoot 'venv\Scripts\python.exe'
 
-function Ensure-Path {
-    param([string]$Path, [string]$Description)
-    if (-not (Test-Path $Path)) {
-        throw "$Description not found at '$Path'."
+if (!(Test-Path $pythonExe)) {
+    $fallbackPythonExe = Join-Path $backendPath 'venv\Scripts\python.exe'
+    if (Test-Path $fallbackPythonExe) {
+        $pythonExe = $fallbackPythonExe
     }
 }
 
-function Ensure-Command {
-    param([string]$Command, [string]$Hint)
-    if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) {
-        if (-not $Hint) { $Hint = "Install $Command and add it to PATH." }
-        throw "Required command '$Command' not found. $Hint"
-    }
-}
-
-function Add-EnvPath {
-    param([string]$PathToAdd)
-    if ([string]::IsNullOrWhiteSpace($PathToAdd)) { return }
-    if (-not (Test-Path $PathToAdd)) { return }
-    if ($env:PATH.Split([IO.Path]::PathSeparator) -notcontains $PathToAdd) {
-        $env:PATH = "$env:PATH$([IO.Path]::PathSeparator)$PathToAdd"
-    }
-}
-
-function Get-AndroidSdkRoot {
-    if ($env:ANDROID_HOME) { return $env:ANDROID_HOME }
-    if ($env:ANDROID_SDK_ROOT) { return $env:ANDROID_SDK_ROOT }
-    return Join-Path $env:LOCALAPPDATA "Android\Sdk"
-}
-
-function Get-AdbDevices {
-    $output = (& adb devices) 2>$null
-    foreach ($line in $output) {
-        $trimmed = $line.Trim()
-        if (-not $trimmed) { continue }
-        if ($trimmed -like "List of devices*") { continue }
-        $parts = $trimmed -split "\s+"
-        if ($parts.Count -ge 2) {
-            [PSCustomObject]@{
-                Id     = $parts[0]
-                Status = $parts[1]
-            }
-        }
-    }
-}
-
-function Wait-ForDeviceReady {
-    param(
-        [string]$DeviceId,
-        [int]$TimeoutSeconds = 240
-    )
-
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $state = Get-AdbDevices | Where-Object { $_.Id -eq $DeviceId -and $_.Status -eq "device" }
-        if ($state) {
-            $booted = (& adb -s $DeviceId shell getprop sys.boot_completed 2>$null | Out-String).Trim()
-            if ($booted -eq "1") { return $true }
-        }
-        Start-Sleep -Seconds 3
-    }
-    return $false
-}
-
-function Launch-Emulator {
-    param(
-        [string]$EmulatorExecutable,
-        [string]$GpuMode,
-        [int]$TimeoutSeconds
-    )
-
-    $avdList = (& $EmulatorExecutable -list-avds 2>$null | Out-String).Trim().Split("`r`n", [System.StringSplitOptions]::RemoveEmptyEntries)
-    if (-not $avdList -or $avdList.Count -eq 0) {
-        throw "No Android Virtual Devices defined. Create one from Android Studio."
-    }
-
-    $avdName = $avdList[0].Trim()
-    Write-Step "Launching emulator '$avdName' (GPU: $GpuMode)"
-
-    $emuArgs = @(
-        "-avd", $avdName,
-        "-netfast",
-        "-no-snapshot-save",
-        "-gpu", $GpuMode
-    )
-
-    $process = Start-Process -FilePath $EmulatorExecutable -ArgumentList $emuArgs -PassThru
-    Start-Sleep -Seconds 5
-
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $device = Get-AdbDevices | Select-Object -First 1
-        if ($device) {
-            if (Wait-ForDeviceReady -DeviceId $device.Id -TimeoutSeconds ($TimeoutSeconds - [int]$timer.Elapsed.TotalSeconds)) {
-                return [PSCustomObject]@{
-                    Id       = $device.Id
-                    Process  = $process
-                    Launched = $true
-                }
-            }
-            break
-        }
-        Start-Sleep -Seconds 3
-    }
-
-    $process | Stop-Process -Force -ErrorAction SilentlyContinue
-    throw "Emulator failed to boot within $TimeoutSeconds seconds. Check emulator logs (missing opengl32sw.dll is common)."
-}
-
-function Resolve-Device {
-    param(
-        [string]$DeviceId,
-        [switch]$AllowLaunch,
-        [string]$EmulatorExecutable,
-        [string]$GpuMode,
-        [int]$TimeoutSeconds
-    )
-
-    if ($DeviceId) {
-        Write-Step "Targeting requested device '$DeviceId'"
-        if (Wait-ForDeviceReady -DeviceId $DeviceId -TimeoutSeconds $TimeoutSeconds) {
-            return [PSCustomObject]@{ Id = $DeviceId; Launched = $false; Process = $null }
-        }
-        throw "Device '$DeviceId' not detected over adb."
-    }
-
-    $connected = Get-AdbDevices | Where-Object { $_.Status -eq "device" } | Select-Object -First 1
-    if ($connected) {
-        Write-Step "Using connected device $($connected.Id)"
-        return [PSCustomObject]@{ Id = $connected.Id; Launched = $false; Process = $null }
-    }
-
-    if (-not $AllowLaunch) {
-        throw "No Android devices detected and emulator launch disabled."
-    }
-
-    return Launch-Emulator -EmulatorExecutable $EmulatorExecutable -GpuMode $GpuMode -TimeoutSeconds $TimeoutSeconds
-}
-
-function Resolve-LanIp {
-    param([string]$Preferred, [string]$DeviceId)
-
-    if ($Preferred) { return $Preferred }
-    if ($DeviceId -like "emulator-*") { return "10.0.2.2" }
-
-    $ip = Get-NetIPAddress -AddressFamily IPv4 |
-        Where-Object {
-            $_.IPAddress -notlike "169.254.*" -and
-            $_.IPAddress -ne "127.0.0.1" -and
-            $_.InterfaceAlias -notlike "*Virtual*"
-        } |
-        Sort-Object SkipAsSource, PrefixOrigin |
-        Select-Object -First 1
-
-    if ($ip) { return $ip.IPAddress }
-    return "127.0.0.1"
-}
-
-function Stop-ProcessSafe {
-    param([Diagnostics.Process]$Process)
-    if (-not $Process) { return }
-    try {
-        if (-not $Process.HasExited) {
-            $Process.CloseMainWindow() | Out-Null
-            Start-Sleep -Milliseconds 300
-        }
-        if (-not $Process.HasExited) {
-            $Process.Kill()
-        }
-        $Process.WaitForExit()
-    } catch {
-        # ignore
-    }
-}
-
-$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $projectRoot) { $projectRoot = Get-Location }
-
-$backendDir = Join-Path $projectRoot "backend"
-$flutterDir = Join-Path $projectRoot "apps\app_user"
-$pythonExe  = Join-Path $backendDir "venv\Scripts\python.exe"
-$managePy   = Join-Path $backendDir "manage.py"
-
-Write-Step "Validating project structure"
-Ensure-Path $backendDir "Backend directory"
-Ensure-Path $flutterDir "Flutter directory"
-Ensure-Path $pythonExe  "Backend virtualenv Python"
-Ensure-Path $managePy   "manage.py"
-Ensure-Path (Join-Path $flutterDir "pubspec.yaml") "Flutter pubspec"
-
-Ensure-Command "flutter" "Install Flutter SDK and ensure 'flutter' is in PATH."
-
-$sdkRoot = Get-AndroidSdkRoot
-Ensure-Path $sdkRoot "Android SDK root"
-Add-EnvPath (Join-Path $sdkRoot "platform-tools")
-Add-EnvPath (Join-Path $sdkRoot "emulator")
-Ensure-Command "adb" "Install Android platform-tools from the SDK Manager."
-
-$emulatorExe = Join-Path $sdkRoot "emulator\emulator.exe"
-Ensure-Path $emulatorExe "Android emulator executable"
-
-$softwareGl = Join-Path $sdkRoot "emulator\lib64\opengl32sw.dll"
-if (-not (Test-Path $softwareGl)) {
-    Write-Warning "opengl32sw.dll missing. Install/repair the 'Android Emulator' package if the emulator fails to start."
-}
-
-Write-Step "Resolving Android target"
-$deviceInfo = Resolve-Device -DeviceId $DeviceId -AllowLaunch:(-not $SkipEmulatorLaunch) -EmulatorExecutable $emulatorExe -GpuMode $GpuMode -TimeoutSeconds $DeviceBootTimeoutSeconds
-$targetDeviceId = $deviceInfo.Id
-
-Write-Step "Running database migrations"
-Push-Location $backendDir
-try {
-    $migrateArgs = @("manage.py", "migrate", "--noinput")
-    $migrateProcess = Start-Process -FilePath $pythonExe -ArgumentList $migrateArgs -WorkingDirectory $backendDir -NoNewWindow -Wait -PassThru -RedirectStandardOutput "$env:TEMP\django_migrate_android.txt" -RedirectStandardError "$env:TEMP\django_migrate_android_err.txt"
-    
-    if ($migrateProcess.ExitCode -ne 0) {
-        Write-Warning "Migration had issues (exit code: $($migrateProcess.ExitCode))"
-        if (Test-Path "$env:TEMP\django_migrate_android_err.txt") {
-            $errorOutput = Get-Content "$env:TEMP\django_migrate_android_err.txt" -Raw
-            if ($errorOutput) {
-                Write-Host $errorOutput -ForegroundColor Yellow
-            }
-        }
+# If venv python not found, try to use system python (py launcher)
+if (!(Test-Path $pythonExe)) {
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        Write-Host "Virtual environment not found. Using system Python (py launcher)." -ForegroundColor Yellow
+        $pythonExe = "py"
+        $pythonArgs = @("-3")
     } else {
-        Write-Host "Migrations applied successfully." -ForegroundColor Green
+        Write-Error "Python virtualenv not found. Expected at $projectRoot\.venv or $backendPath\venv."
+        Write-Host "Please create a virtual environment first:" -ForegroundColor Yellow
+        Write-Host "  cd backend" -ForegroundColor Yellow
+        Write-Host "  py -m venv venv" -ForegroundColor Yellow
+        Write-Host "  .\venv\Scripts\activate" -ForegroundColor Yellow
+        Write-Host "  pip install -r requirements.txt" -ForegroundColor Yellow
+        exit 1
+    }
+} else {
+    $pythonArgs = @()
+}
+
+if (!(Test-Path (Join-Path $flutterPath 'pubspec.yaml'))) {
+    Write-Error "Flutter project (pubspec.yaml) not found at $flutterPath."
+    exit 1
+}
+
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "  Android Emulator + Backend Runner" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Backend: http://0.0.0.0:$Port (host)" -ForegroundColor Green
+Write-Host "Android: http://10.0.2.2:$Port (emulator -> host)" -ForegroundColor Green
+Write-Host "Mode: $(if ($Release) { 'Release' } else { 'Debug' })" -ForegroundColor Green
+Write-Host ""
+
+# Email configuration
+$useConsoleEmail = $env:USE_CONSOLE_EMAIL
+if ($useConsoleEmail -eq 'true') {
+    Write-Host "Email: Console backend (OTPs in terminal)" -ForegroundColor Green
+    [Environment]::SetEnvironmentVariable('USE_CONSOLE_EMAIL', 'true', 'Process')
+} else {
+    Write-Host "Email: SMTP backend (Gmail)" -ForegroundColor Green
+    [Environment]::SetEnvironmentVariable('USE_CONSOLE_EMAIL', 'false', 'Process')
+}
+Write-Host ""
+
+# ========================================
+# Step 1: Check for Android device/emulator
+# ========================================
+Write-Host "[1/4] Checking for Android device/emulator..." -ForegroundColor Cyan
+
+$adbDevices = & adb devices 2>&1
+$deviceLines = $adbDevices | Select-String -Pattern "device$" | Where-Object { $_ -notmatch "List of devices" }
+
+if (-not $deviceLines) {
+    Write-Host ""
+    Write-Host "No Android device or emulator found!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please do one of the following:" -ForegroundColor Yellow
+    Write-Host "  1. Start an Android emulator from Android Studio" -ForegroundColor Yellow
+    Write-Host "  2. Connect a physical Android device with USB debugging enabled" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "To start an emulator from command line:" -ForegroundColor Cyan
+    Write-Host "  emulator -list-avds" -ForegroundColor White
+    Write-Host "  emulator -avd <avd_name>" -ForegroundColor White
+    Write-Host ""
+    exit 1
+}
+
+Write-Host "Found Android device(s):" -ForegroundColor Green
+$deviceLines | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+Write-Host ""
+
+# ========================================
+# Step 2: Database migrations
+# ========================================
+Write-Host "[2/4] Running database migrations..." -ForegroundColor Cyan
+
+Push-Location $backendPath
+try {
+    # Makemigrations
+    Write-Host "  Creating migrations (if needed)..." -ForegroundColor Gray
+    $makemigrationsArgs = $pythonArgs + @('manage.py', 'makemigrations')
+    $makemigrationsProcess = Start-Process -FilePath $pythonExe `
+        -ArgumentList $makemigrationsArgs `
+        -WorkingDirectory $backendPath `
+        -NoNewWindow `
+        -Wait `
+        -PassThru `
+        -RedirectStandardOutput "$env:TEMP\django_makemigrations.txt" `
+        -RedirectStandardError "$env:TEMP\django_makemigrations_err.txt"
+
+    if ($makemigrationsProcess.ExitCode -ne 0) {
+        Write-Warning "  makemigrations had issues (continuing anyway)"
+    }
+
+    # Migrate
+    Write-Host "  Applying migrations..." -ForegroundColor Gray
+    $migrateArgs = $pythonArgs + @('manage.py', 'migrate', '--noinput')
+    $migrateProcess = Start-Process -FilePath $pythonExe `
+        -ArgumentList $migrateArgs `
+        -WorkingDirectory $backendPath `
+        -NoNewWindow `
+        -Wait `
+        -PassThru `
+        -RedirectStandardOutput "$env:TEMP\django_migrate.txt" `
+        -RedirectStandardError "$env:TEMP\django_migrate_err.txt"
+
+    if ($migrateProcess.ExitCode -eq 0) {
+        Write-Host "  Migrations applied successfully." -ForegroundColor Green
+    } else {
+        Write-Error "Migration failed. Check $env:TEMP\django_migrate_err.txt for details."
+        exit 1
     }
 }
 finally {
     Pop-Location
 }
+Write-Host ""
 
-Write-Step "Starting Django backend with Daphne (ASGI for WebSocket support)"
-# Check if port is already in use
-$existingProcesses = Get-NetTCPConnection -LocalPort $BackendPort -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+# ========================================
+# Step 3: Start Django backend
+# ========================================
+Write-Host "[3/4] Starting Django backend (Daphne ASGI)..." -ForegroundColor Cyan
+
+# Function to check if port is in use
+function Test-PortInUse {
+    param([int]$TestPort)
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $TestPort)
+        $listener.Start()
+        $listener.Stop()
+        return $false
+    } catch {
+        return $true
+    }
+}
+
+# Stop any existing server on the port
+$existingProcesses = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
 if ($existingProcesses) {
-    Write-Host "Found existing server(s) on port $BackendPort. Stopping them..." -ForegroundColor Yellow
+    Write-Host "  Stopping existing server on port $Port..." -ForegroundColor Yellow
     $existingProcesses | ForEach-Object {
         try {
-            $proc = Get-Process -Id $_ -ErrorAction SilentlyContinue
-            if ($proc) {
-                Write-Host "  Stopping process: $($proc.ProcessName) (PID: $_)" -ForegroundColor Yellow
-                Stop-Process -Id $_ -Force -ErrorAction Stop
-            }
-        } catch {
-            Write-Warning "  Could not stop process (PID: $_). You may need to stop it manually."
-        }
+            Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+        } catch { }
     }
     Start-Sleep -Seconds 2
-    Write-Host "Existing server(s) stopped." -ForegroundColor Green
 }
 
-# Use Daphne for ASGI (WebSocket support) - REQUIRED for WebSocket functionality
-# Build arguments as array for Start-Process
-$backendArgs = @("-m", "daphne", "core.asgi:application", "--bind", "0.0.0.0", "--port", "$BackendPort")
-$backendProcess = Start-Process -FilePath $pythonExe -ArgumentList $backendArgs -WorkingDirectory $backendDir -NoNewWindow -PassThru
-Start-Sleep -Seconds 3
-
-Write-Step "Running Flutter app"
-$lanIp = Resolve-LanIp -Preferred $LanIp -DeviceId $targetDeviceId
-$backendUrl = "http://$($lanIp):$BackendPort/api"
-Write-Host "Backend URL injected into Flutter: $backendUrl" -ForegroundColor Yellow
-
-$flutterArgs = @("run", "-d", $targetDeviceId, "--dart-define=BACKEND_BASE_URL=$backendUrl")
-if ($Release) { $flutterArgs += "--release" }
-
-Push-Location $flutterDir
-try {
-    flutter @flutterArgs
-} finally {
-    Pop-Location
-    Write-Step "Cleaning up"
-    Stop-ProcessSafe -Process $backendProcess
-    if ($deviceInfo.Launched) {
-        Stop-ProcessSafe -Process $deviceInfo.Process
+# Find available port
+$backendPort = $null
+$testPorts = @($Port, 8001, 8002, 8003)
+foreach ($testPort in $testPorts) {
+    if (-not (Test-PortInUse -TestPort $testPort)) {
+        $backendPort = $testPort
+        break
     }
 }
+
+if (-not $backendPort) {
+    Write-Error "All ports ($($testPorts -join ', ')) are in use. Please free one."
+    exit 1
+}
+
+if ($backendPort -ne $Port) {
+    Write-Host "  Port $Port in use, using port $backendPort instead" -ForegroundColor Yellow
+}
+
+# Start Daphne in background
+$script:backendOutputFile = Join-Path $env:TEMP "django_android_output_$backendPort.txt"
+$script:backendErrorFile = Join-Path $env:TEMP "django_android_error_$backendPort.txt"
+
+Push-Location $backendPath
+$daphneArgs = $pythonArgs + @('-m', 'daphne', 'core.asgi:application', '--bind', '0.0.0.0', '--port', "$backendPort")
+
+$backendProcess = Start-Process -FilePath $pythonExe `
+    -ArgumentList $daphneArgs `
+    -WorkingDirectory $backendPath `
+    -NoNewWindow `
+    -PassThru `
+    -RedirectStandardOutput $script:backendOutputFile `
+    -RedirectStandardError $script:backendErrorFile
+Pop-Location
+
+# Wait for server to start
+Start-Sleep -Seconds 3
+
+if ($backendProcess -and !$backendProcess.HasExited) {
+    Write-Host "  Backend started on port $backendPort" -ForegroundColor Green
+    Write-Host "  API: http://127.0.0.1:$backendPort/api" -ForegroundColor Gray
+    Write-Host "  WebSocket: ws://127.0.0.1:$backendPort/ws/chat/<id>/" -ForegroundColor Gray
+    $script:backendProcess = $backendProcess
+    $script:backendPort = $backendPort
+} else {
+    Write-Error "Backend failed to start. Check logs at $script:backendErrorFile"
+    exit 1
+}
+Write-Host ""
+
+# ========================================
+# Step 4: Launch Flutter on Android
+# ========================================
+Write-Host "[4/4] Launching Flutter on Android..." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Backend URL for Android: http://10.0.2.2:$backendPort/api" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "----------------------------------------" -ForegroundColor DarkGray
+Write-Host "Flutter Hot Reload:" -ForegroundColor Cyan
+Write-Host "  r - Hot reload (quick)" -ForegroundColor Green
+Write-Host "  R - Hot restart (full)" -ForegroundColor Green
+Write-Host "  q - Quit" -ForegroundColor Green
+Write-Host "----------------------------------------" -ForegroundColor DarkGray
+Write-Host ""
+
+# Set up log tailing for backend in background
+$script:logTailRunspace = [runspacefactory]::CreateRunspace()
+$script:logTailRunspace.Open()
+
+$ps = [PowerShell]::Create()
+$ps.Runspace = $script:logTailRunspace
+
+$tailScript = @"
+    `$outputFile = '$($script:backendOutputFile)'
+    `$errorFile = '$($script:backendErrorFile)'
+    `$lastSize = 0
+    `$lastErrorSize = 0
+    
+    while (`$true) {
+        if (Test-Path `$outputFile) {
+            try {
+                `$file = Get-Item `$outputFile -ErrorAction SilentlyContinue
+                if (`$file -and `$file.Length -gt `$lastSize) {
+                    `$stream = [System.IO.FileStream]::new(`$outputFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                    `$stream.Position = `$lastSize
+                    `$reader = New-Object System.IO.StreamReader(`$stream)
+                    while (`$null -ne (`$line = `$reader.ReadLine())) {
+                        if (`$line.Trim()) {
+                            [Console]::WriteLine("[BACKEND] `$line")
+                        }
+                    }
+                    `$lastSize = `$stream.Position
+                    `$reader.Close()
+                    `$stream.Close()
+                }
+            } catch { }
+        }
+        
+        if (Test-Path `$errorFile) {
+            try {
+                `$file = Get-Item `$errorFile -ErrorAction SilentlyContinue
+                if (`$file -and `$file.Length -gt `$lastErrorSize) {
+                    `$stream = [System.IO.FileStream]::new(`$errorFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                    `$stream.Position = `$lastErrorSize
+                    `$reader = New-Object System.IO.StreamReader(`$stream)
+                    while (`$null -ne (`$line = `$reader.ReadLine())) {
+                        if (`$line.Trim()) {
+                            [Console]::ForegroundColor = [ConsoleColor]::Red
+                            [Console]::WriteLine("[BACKEND ERROR] `$line")
+                            [Console]::ResetColor()
+                        }
+                    }
+                    `$lastErrorSize = `$stream.Position
+                    `$reader.Close()
+                    `$stream.Close()
+                }
+            } catch { }
+        }
+        
+        Start-Sleep -Milliseconds 300
+    }
+"@
+
+$ps.AddScript($tailScript) | Out-Null
+$script:logTailHandle = $ps.BeginInvoke()
+$script:logTailPowerShell = $ps
+
+# Run Flutter with Android-specific backend URL
+Push-Location $flutterPath
+try {
+    # Build Flutter arguments with Android emulator backend URL (10.0.2.2 maps to host's 127.0.0.1)
+    $androidBackendUrl = "http://10.0.2.2:$backendPort/api"
+    
+    $flutterArgs = @(
+        'run',
+        '-d', 'android',
+        '--dart-define', "BACKEND_BASE_URL=$androidBackendUrl"
+    )
+    
+    if ($Release) {
+        $flutterArgs += '--release'
+    }
+    
+    Write-Host "Running: flutter $($flutterArgs -join ' ')" -ForegroundColor Gray
+    Write-Host ""
+    
+    # Run Flutter
+    flutter @flutterArgs
+}
+catch {
+    Write-Host "`nError: $_" -ForegroundColor Red
+}
+finally {
+    Pop-Location
+    Write-Host ""
+    Write-Host "----------------------------------------" -ForegroundColor DarkGray
+    Write-Host "Cleaning up..." -ForegroundColor Yellow
+    
+    # Stop log tailing
+    if ($script:logTailPowerShell) {
+        try {
+            $script:logTailPowerShell.Stop() | Out-Null
+            $script:logTailPowerShell.Dispose() | Out-Null
+        } catch { }
+    }
+    if ($script:logTailRunspace) {
+        try {
+            $script:logTailRunspace.Close() | Out-Null
+            $script:logTailRunspace.Dispose() | Out-Null
+        } catch { }
+    }
+    
+    # Stop backend
+    Write-Host "Stopping Django backend..." -ForegroundColor Yellow
+    if ($script:backendProcess -and !$script:backendProcess.HasExited) {
+        try {
+            $script:backendProcess.Kill()
+            $script:backendProcess.WaitForExit()
+        } catch { }
+    }
+    
+    Write-Host ""
+    Write-Host "All processes stopped." -ForegroundColor Green
+}
+

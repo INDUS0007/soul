@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:common/api/api_client.dart';
+import 'chat_history_detail_page.dart';
 
 class AppPalette {
   static const primary = Color(0xFF8B5FBF);
@@ -26,6 +27,14 @@ class _HistoryCenterPageState extends State<HistoryCenterPage>
   late TabController _tabController;
 
   final ApiClient _api = ApiClient();
+  
+  // Chat history state
+  bool _loadingChatHistory = true;
+  String? _chatHistoryError;
+  List<ChatHistoryItem> _chatHistory = const <ChatHistoryItem>[];
+  List<ChatHistoryItem> _activeChats = const <ChatHistoryItem>[];
+  
+  // Sessions state (for calls)
   bool _loadingSessions = true;
   String? _sessionsError;
   List<UpcomingSessionItem> _sessions = const <UpcomingSessionItem>[];
@@ -34,7 +43,45 @@ class _HistoryCenterPageState extends State<HistoryCenterPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadChatHistory();
     _loadSessions();
+  }
+
+  Future<void> _loadChatHistory({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() {
+        _loadingChatHistory = true;
+        _chatHistoryError = null;
+      });
+    } else {
+      setState(() {
+        _chatHistoryError = null;
+      });
+    }
+
+    try {
+      final response = await _api.getChatHistory();
+      if (!mounted) return;
+      setState(() {
+        _chatHistory = response.history;
+        _activeChats = response.activeChats;
+        _loadingChatHistory = false;
+      });
+    } on ApiClientException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _chatHistoryError = error.message;
+        _loadingChatHistory = false;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('[HistoryCenter] Error loading chat history: $error');
+      debugPrint('[HistoryCenter] Stack trace: $stackTrace');
+      if (!mounted) return;
+      setState(() {
+        _chatHistoryError = 'Error: $error';
+        _loadingChatHistory = false;
+      });
+    }
   }
 
   Future<void> _loadSessions({bool showLoader = true}) async {
@@ -71,6 +118,7 @@ class _HistoryCenterPageState extends State<HistoryCenterPage>
     }
   }
 
+  Future<void> _refreshChatHistory() => _loadChatHistory(showLoader: false);
   Future<void> _refreshSessions() => _loadSessions(showLoader: false);
 
   List<UpcomingSessionItem> get _sortedSessions {
@@ -108,32 +156,34 @@ class _HistoryCenterPageState extends State<HistoryCenterPage>
   }
 
   Widget _buildChatHistory() {
-    if (_loadingSessions) {
+    if (_loadingChatHistory) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_sessionsError != null) {
+    if (_chatHistoryError != null) {
       return ListView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
         children: [
           const Icon(Icons.history, size: 48, color: AppPalette.subtext),
           const SizedBox(height: 12),
           Text(
-            _sessionsError!,
+            _chatHistoryError!,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 16, color: AppPalette.text),
           ),
           const SizedBox(height: 12),
           FilledButton(
-            onPressed: _loadSessions,
+            onPressed: _loadChatHistory,
             child: const Text('Retry'),
           ),
         ],
       );
     }
 
-    final orderedSessions = _sortedSessions;
-    if (orderedSessions.isEmpty) {
+    // Combine active and history, with active first
+    final allChats = [..._activeChats, ..._chatHistory];
+    
+    if (allChats.isEmpty) {
       return ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         children: [
@@ -141,7 +191,7 @@ class _HistoryCenterPageState extends State<HistoryCenterPage>
               size: 48, color: AppPalette.subtext),
           const SizedBox(height: 12),
           const Text(
-            'Session chat history will appear here',
+            'Your chat history will appear here',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 18,
@@ -151,101 +201,160 @@ class _HistoryCenterPageState extends State<HistoryCenterPage>
           ),
           const SizedBox(height: 8),
           const Text(
-            'After each counselling session, a summary of the conversation will be listed below. '
-            'Here is a sample entry to show how it will look:',
+            'After chatting with a counsellor, your conversation history will be saved here. '
+            'You can view past connections and their details.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppPalette.subtext),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            color: AppPalette.cardBg,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppPalette.border),
-            ),
-            child: const ListTile(
-              leading: CircleAvatar(
-                backgroundColor: AppPalette.primary,
-                child: Icon(Icons.person, color: Colors.white),
-              ),
-              title: Text(
-                'Therapist Sample',
-                style: TextStyle(
-                  color: AppPalette.text,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: Text(
-                'Session summary available.\n3:30 PM',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Text(
-                '14/11/2025',
-                style: TextStyle(
-                  color: AppPalette.subtext,
-                  fontSize: 12,
-                ),
-              ),
-            ),
           ),
         ],
       );
     }
 
     return RefreshIndicator(
-      onRefresh: _refreshSessions,
+      onRefresh: _refreshChatHistory,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(12),
-        itemCount: orderedSessions.length,
+        itemCount: allChats.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
-          final session = orderedSessions[index];
-          final now = DateTime.now();
-          final isPast = session.startTime.isBefore(now);
-          final counsellor = session.counsellorName.isNotEmpty
-              ? session.counsellorName
-              : session.title.isNotEmpty
-                  ? session.title
-                  : 'Counsellor';
-          final summary = session.notes.isNotEmpty
-              ? session.notes
-              : isPast
-                  ? 'Session summary available.'
-                  : 'Scheduled ${DateFormat('EEE, MMM d').format(session.startTime)}';
-          final dateText = DateFormat('dd/MM/yyyy').format(session.startTime);
-          final timeText = DateFormat('h:mm a').format(session.startTime);
+          final chat = allChats[index];
+          final isActive = chat.status == 'active' || chat.status == 'queued' || chat.status == 'inactive';
+          final counsellorName = chat.counsellorName ?? 'Counsellor';
+          
+          // Get last message preview
+          String subtitle;
+          if (chat.lastMessage != null) {
+            final prefix = chat.lastMessage!.isUser ? 'You: ' : '';
+            subtitle = '$prefix${chat.lastMessage!.text}';
+          } else if (chat.initialMessage != null && chat.initialMessage!.isNotEmpty) {
+            subtitle = chat.initialMessage!;
+          } else {
+            subtitle = '${chat.messageCount} messages • ${chat.durationDisplay}';
+          }
+          
+          // Convert UTC time to local time for display
+          final localTime = chat.createdAt.isUtc 
+              ? chat.createdAt.toLocal() 
+              : DateTime.utc(
+                  chat.createdAt.year, chat.createdAt.month, chat.createdAt.day,
+                  chat.createdAt.hour, chat.createdAt.minute, chat.createdAt.second
+                ).toLocal();
+          final dateText = DateFormat('dd/MM/yyyy').format(localTime);
+          final timeText = DateFormat('h:mm a').format(localTime);
+
+          void openChatDetail() {
+            debugPrint('[HistoryCenter] Opening chat ${chat.id}');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChatHistoryDetailPage(
+                  chatId: chat.id,
+                  counsellorName: counsellorName,
+                  chatDate: chat.createdAt,
+                  messageCount: chat.messageCount,
+                  durationDisplay: chat.durationDisplay,
+                ),
+              ),
+            );
+          }
 
           return Card(
             color: AppPalette.cardBg,
+            clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: AppPalette.border),
+              side: BorderSide(
+                color: isActive ? AppPalette.accent : AppPalette.border,
+                width: isActive ? 2 : 1,
+              ),
             ),
-            child: ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: AppPalette.primary,
-                child: Icon(Icons.person, color: Colors.white),
-              ),
-              title: Text(
-                counsellor,
-                style: const TextStyle(
-                  color: AppPalette.text,
-                  fontWeight: FontWeight.w600,
+            child: InkWell(
+              onTap: openChatDetail,
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: isActive ? AppPalette.accent : AppPalette.primary,
+                  child: const Icon(Icons.person, color: Colors.white),
                 ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      counsellorName,
+                      style: const TextStyle(
+                        color: AppPalette.text,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (isActive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppPalette.accent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        chat.status.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              subtitle: Text(
-                '$summary\n$timeText',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppPalette.subtext),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.message, size: 12, color: AppPalette.subtext),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${chat.messageCount}',
+                        style: const TextStyle(fontSize: 12, color: AppPalette.subtext),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(Icons.timer, size: 12, color: AppPalette.subtext),
+                      const SizedBox(width: 4),
+                      Text(
+                        chat.durationDisplay,
+                        style: const TextStyle(fontSize: 12, color: AppPalette.subtext),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              trailing: Text(
-                dateText,
-                style: const TextStyle(
-                  color: AppPalette.subtext,
-                  fontSize: 12,
-                ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    dateText,
+                    style: const TextStyle(
+                      color: AppPalette.subtext,
+                      fontSize: 11,
+                    ),
+                  ),
+                  Text(
+                    timeText,
+                    style: const TextStyle(
+                      color: AppPalette.subtext,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+                isThreeLine: true,
               ),
             ),
           );
